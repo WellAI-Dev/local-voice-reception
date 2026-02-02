@@ -551,8 +551,6 @@ def create_ui(app: VoiceReceptionApp) -> Tuple[gr.Blocks, dict]:
 
     with gr.Blocks(
         title=ui_config.get("title", "音声AI受付システム"),
-        js=PTT_JS,
-        css=custom_css,
     ) as demo:
         # Header
         gr.Markdown("# 🎙️ 音声AI受付システム")
@@ -604,7 +602,6 @@ def create_ui(app: VoiceReceptionApp) -> Tuple[gr.Blocks, dict]:
                     label="🔊 AI応答",
                     type="numpy",
                     autoplay=True,
-                    show_download_button=True,
                 )
 
                 # Current turn display
@@ -757,14 +754,14 @@ def create_ui(app: VoiceReceptionApp) -> Tuple[gr.Blocks, dict]:
 
         demo.load(fn=on_load, outputs=[status_text])
 
-    return demo, theme
+    return demo, theme, custom_css
 
 
 def main():
     """Main entry point."""
     config = load_config()
     app = VoiceReceptionApp(config)
-    demo, theme = create_ui(app)
+    demo, theme, custom_css = create_ui(app)
 
     ui_config = config.get("ui", {})
     host = os.environ.get("GRADIO_SERVER_NAME", ui_config.get("host", "127.0.0.1"))
@@ -778,6 +775,8 @@ def main():
         server_port=port,
         share=share,
         theme=theme,
+        css=custom_css,
+        js=PTT_JS,
     )
 
 
