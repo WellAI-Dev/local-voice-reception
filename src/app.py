@@ -464,14 +464,88 @@ def create_ui(app: VoiceReceptionApp) -> Tuple[gr.Blocks, dict]:
     theme_name = ui_config.get("theme", "soft")
     theme = getattr(gr.themes, theme_name.capitalize(), gr.themes.Soft)()
 
-    # CSS to hide elements (visible=False removes from DOM, so use CSS instead)
+    # Custom CSS with responsive design and status styling
     custom_css = """
+    /* Container */
+    .gradio-container {
+        max-width: 960px !important;
+        margin: 0 auto !important;
+    }
+
+    /* Hidden elements */
     .hidden-input {
         position: absolute !important;
         left: -9999px !important;
         width: 1px !important;
         height: 1px !important;
         overflow: hidden !important;
+    }
+
+    /* Status badge */
+    .status-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 16px;
+        border-radius: 20px;
+        font-size: 14px;
+        font-weight: 600;
+        transition: all 0.3s ease;
+    }
+    .status-idle { background: #e5e7eb; color: #374151; }
+    .status-recording { background: #fecaca; color: #dc2626; animation: pulse 1s infinite; }
+    .status-processing { background: #dbeafe; color: #2563eb; }
+    .status-speaking { background: #d1fae5; color: #059669; }
+
+    @keyframes pulse {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.6; }
+    }
+
+    /* Error display */
+    .error-box {
+        background: #fef2f2;
+        border-left: 4px solid #dc2626;
+        padding: 12px 16px;
+        border-radius: 4px;
+        margin: 8px 0;
+    }
+    .warning-box {
+        background: #fffbeb;
+        border-left: 4px solid #d97706;
+        padding: 12px 16px;
+        border-radius: 4px;
+        margin: 8px 0;
+    }
+
+    /* Chatbot styling */
+    .chatbot-container {
+        border-radius: 12px !important;
+    }
+
+    /* Mobile responsive */
+    @media (max-width: 768px) {
+        .gradio-container {
+            padding: 8px !important;
+        }
+        #ptt-btn {
+            padding: 28px !important;
+            font-size: 22px !important;
+        }
+        .gradio-row {
+            flex-direction: column !important;
+        }
+        .gradio-column {
+            width: 100% !important;
+            max-width: 100% !important;
+        }
+    }
+
+    /* Touch device optimization */
+    @media (hover: none) {
+        #ptt-btn {
+            padding: 36px !important;
+        }
     }
     """
 
@@ -480,20 +554,27 @@ def create_ui(app: VoiceReceptionApp) -> Tuple[gr.Blocks, dict]:
         js=PTT_JS,
         css=custom_css,
     ) as demo:
-        gr.Markdown(
-            """
-            # 🎙️ 音声AI受付システム
+        # Header
+        gr.Markdown("# 🎙️ 音声AI受付システム")
 
-            下のボタンを**押している間**だけ録音されます。離すと自動で送信されます。
-            """
+        # Status indicator
+        status_html = gr.HTML(
+            value='<div style="text-align: center; margin: 8px 0;"><span class="status-badge status-idle">⏸️ 待機中</span></div>',
+            elem_id="status-display",
         )
 
-        with gr.Row():
+        with gr.Row(equal_height=True):
             with gr.Column(scale=1):
-                # Push-to-Talk HTML component (button only, no script)
+                # Instructions
+                gr.Markdown(
+                    "**ボタンを押している間**だけ録音されます",
+                    elem_classes=["instruction-text"],
+                )
+
+                # Push-to-Talk HTML component
                 gr.HTML(PTT_HTML)
 
-                # Hidden textbox to receive base64 audio from JS (use CSS to hide, not visible=False)
+                # Hidden textbox for base64 audio
                 audio_base64_input = gr.Textbox(
                     label="",
                     elem_id="ptt-audio-data",
@@ -501,55 +582,63 @@ def create_ui(app: VoiceReceptionApp) -> Tuple[gr.Blocks, dict]:
                     container=False,
                 )
 
-                # Hidden submit button triggered by JS
+                # Hidden submit button
                 ptt_submit_btn = gr.Button(
                     "送信",
                     elem_id="ptt-submit-btn",
                     elem_classes=["hidden-input"],
                 )
 
-                # Fallback: Standard audio input
-                with gr.Accordion("📁 または音声ファイルをアップロード", open=False):
+                # Fallback: File upload
+                with gr.Accordion("📁 ファイルをアップロード", open=False):
                     audio_input = gr.Audio(
                         sources=["microphone", "upload"],
                         type="numpy",
                         label="音声入力",
                     )
-                    manual_submit_btn = gr.Button("🚀 送信", variant="secondary")
-
-                clear_btn = gr.Button("🗑️ 会話をクリア", size="sm")
+                    manual_submit_btn = gr.Button("🚀 送信", variant="secondary", size="sm")
 
             with gr.Column(scale=1):
+                # Output audio
                 audio_output = gr.Audio(
                     label="🔊 AI応答",
                     type="numpy",
                     autoplay=True,
+                    show_download_button=True,
                 )
 
-        with gr.Row():
-            with gr.Column():
-                recognized_text = gr.Textbox(
-                    label="📝 認識されたテキスト",
-                    lines=2,
-                    interactive=False,
-                )
+                # Current turn display
+                with gr.Group():
+                    recognized_text = gr.Textbox(
+                        label="📝 あなたの発言",
+                        lines=2,
+                        interactive=False,
+                        show_copy_button=True,
+                    )
+                    response_text = gr.Textbox(
+                        label="💬 AIの回答",
+                        lines=3,
+                        interactive=False,
+                        show_copy_button=True,
+                    )
 
-            with gr.Column():
-                response_text = gr.Textbox(
-                    label="💬 AIの応答",
-                    lines=2,
-                    interactive=False,
-                )
-
-        conversation_display = gr.Textbox(
-            label="📋 会話ログ",
-            lines=8,
-            interactive=False,
+        # Conversation history using Chatbot component
+        chatbot = gr.Chatbot(
+            label="📋 会話履歴",
+            type="messages",
+            height=280,
+            elem_classes=["chatbot-container"],
+            show_copy_button=True,
         )
 
+        # Action buttons
+        with gr.Row():
+            clear_btn = gr.Button("🗑️ 会話をクリア", size="sm", variant="secondary")
+
+        # System info accordion
         with gr.Accordion("🔧 システム情報", open=False):
             status_text = gr.Textbox(
-                label="ステータス",
+                label="初期化ステータス",
                 value="初期化中...",
                 interactive=False,
             )
@@ -558,27 +647,108 @@ def create_ui(app: VoiceReceptionApp) -> Tuple[gr.Blocks, dict]:
                 value=get_device_info(),
             )
 
+        # Conversation state
+        chat_history = gr.State(value=[])
+
+        # Status HTML helpers
+        def make_status(status: str) -> str:
+            statuses = {
+                "idle": ("⏸️ 待機中", "status-idle"),
+                "recording": ("🔴 録音中", "status-recording"),
+                "stt": ("🎯 音声認識中...", "status-processing"),
+                "llm": ("🤔 回答生成中...", "status-processing"),
+                "tts": ("🔊 音声合成中...", "status-processing"),
+                "speaking": ("🔈 再生中", "status-speaking"),
+            }
+            text, css_class = statuses.get(status, ("⏸️ 待機中", "status-idle"))
+            return f'<div style="text-align: center; margin: 8px 0;"><span class="status-badge {css_class}">{text}</span></div>'
+
+        # Wrapper for PTT with status updates and chatbot
+        def process_ptt_with_status(audio_b64, history):
+            if not audio_b64:
+                yield None, "", "", history, make_status("idle"), history
+                return
+
+            history = history or []
+
+            # STT phase
+            yield None, "", "", history, make_status("stt"), history
+
+            user_text = ""
+            ai_text = ""
+            audio_out = None
+
+            for result in app.process_base64_audio(audio_b64):
+                audio_out, user_text, ai_text, _ = result
+
+                if user_text and "生成中" in ai_text:
+                    yield audio_out, user_text, ai_text, history, make_status("llm"), history
+                elif user_text and "音声を生成中" in ai_text:
+                    yield audio_out, user_text, ai_text, history, make_status("tts"), history
+                else:
+                    yield audio_out, user_text, ai_text, history, make_status("llm"), history
+
+            # Update chat history
+            if user_text and ai_text and "⚠️" not in ai_text:
+                history = history + [
+                    {"role": "user", "content": user_text},
+                    {"role": "assistant", "content": ai_text},
+                ]
+
+            yield audio_out, user_text, ai_text, history, make_status("idle"), history
+
+        # Wrapper for manual upload
+        def process_upload_with_status(audio, history):
+            if audio is None:
+                yield None, "", "", history, make_status("idle"), history
+                return
+
+            history = history or []
+            yield None, "", "", history, make_status("stt"), history
+
+            user_text = ""
+            ai_text = ""
+            audio_out = None
+
+            for result in app.process_audio_streaming(audio):
+                audio_out, user_text, ai_text, _ = result
+
+                if user_text and "生成中" in ai_text:
+                    yield audio_out, user_text, ai_text, history, make_status("llm"), history
+                elif user_text and "音声を生成中" in ai_text:
+                    yield audio_out, user_text, ai_text, history, make_status("tts"), history
+                else:
+                    yield audio_out, user_text, ai_text, history, make_status("llm"), history
+
+            if user_text and ai_text and "⚠️" not in ai_text:
+                history = history + [
+                    {"role": "user", "content": user_text},
+                    {"role": "assistant", "content": ai_text},
+                ]
+
+            yield audio_out, user_text, ai_text, history, make_status("idle"), history
+
         # Event handlers
         ptt_submit_btn.click(
-            fn=app.process_base64_audio,
-            inputs=[audio_base64_input],
-            outputs=[audio_output, recognized_text, response_text, conversation_display],
+            fn=process_ptt_with_status,
+            inputs=[audio_base64_input, chat_history],
+            outputs=[audio_output, recognized_text, response_text, chatbot, status_html, chat_history],
         )
 
         manual_submit_btn.click(
-            fn=app.process_audio_streaming,
-            inputs=[audio_input],
-            outputs=[audio_output, recognized_text, response_text, conversation_display],
+            fn=process_upload_with_status,
+            inputs=[audio_input, chat_history],
+            outputs=[audio_output, recognized_text, response_text, chatbot, status_html, chat_history],
         )
 
         def clear_all():
             app.clear_conversation()
-            return None, None, "", "", "", ""
+            return None, None, "", "", [], "", make_status("idle"), []
 
         clear_btn.click(
             fn=clear_all,
             inputs=[],
-            outputs=[audio_input, audio_output, recognized_text, response_text, conversation_display, audio_base64_input],
+            outputs=[audio_input, audio_output, recognized_text, response_text, chatbot, audio_base64_input, status_html, chat_history],
         )
 
         def on_load():
