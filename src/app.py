@@ -622,10 +622,8 @@ def create_ui(app: VoiceReceptionApp) -> Tuple[gr.Blocks, dict]:
         # Conversation history using Chatbot component
         chatbot = gr.Chatbot(
             label="📋 会話履歴",
-            type="messages",
             height=280,
             elem_classes=["chatbot-container"],
-            
         )
 
         # Action buttons
