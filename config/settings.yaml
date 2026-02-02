@@ -1,0 +1,132 @@
+# アプリケーション設定
+# Local Voice Reception AI
+
+app:
+  name: "Local Voice Reception AI"
+  version: "0.1.0"
+  debug: true
+  log_level: "INFO"
+
+# 音声認識 (Speech-to-Text) 設定
+stt:
+  # Voskモデルのパス
+  # model_path: "models/vosk/vosk-model-ja-0.22"
+  # 軽量版（テスト用）
+  model_path: "models/vosk/vosk-model-small-ja-0.22"
+  
+  # オーディオ設定
+  sample_rate: 16000
+  chunk_size: 8000
+  channels: 1
+  
+  # 認識設定
+  partial_results: true  # 部分認識結果を表示
+
+# 音声合成 (Text-to-Speech) 設定
+tts:
+  # モデル設定
+  model_name: "Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice"
+  # 軽量版: "Qwen/Qwen3-TTS-12Hz-0.6B-Base"
+
+  # デバイス設定 (auto = 自動検出)
+  # mps: Apple Silicon (float32, sdpa)
+  # cuda: NVIDIA GPU (bfloat16, flash_attention_2)
+  # cpu: CPU fallback (float32, sdpa)
+  device: "auto"
+  
+  # 音声設定
+  mode: "voice_clone"  # voice_clone / custom_voice / voice_design
+  
+  # 音声クローン設定 (mode: voice_clone の場合)
+  voice_clone:
+    ref_audio: "data/voice_samples/company_voice.wav"
+    ref_text: "お電話ありがとうございます。コア株式会社でございます。"
+  
+  # プリセット音声設定 (mode: custom_voice の場合)
+  custom_voice:
+    speaker: "ono_anna"  # 日本語ネイティブ話者（小文字・アンダースコア）
+    language: "Japanese"
+  
+  # 発音辞書
+  pronunciation_dict: "config/pronunciation_dict.yaml"
+
+  # 起動時にモデルをプリロード（初回リクエストの遅延を回避）
+  preload: true
+
+# RAG (Retrieval-Augmented Generation) 設定
+rag:
+  # ナレッジベース
+  knowledge_dir: "data/knowledge"
+  
+  # ベクトルストア
+  vectorstore_dir: "data/vectorstore"
+  
+  # Embeddingモデル
+  embedding_model: "intfloat/multilingual-e5-small"
+  
+  # チャンク設定
+  chunk_size: 500
+  chunk_overlap: 50
+  
+  # 検索設定
+  top_k: 3
+  score_threshold: 0.5
+
+# LLM (Large Language Model) 設定
+llm:
+  # プロバイダー
+  provider: "ollama"  # ollama / openai / local
+  
+  # Ollama設定
+  ollama:
+    base_url: "http://localhost:11434"
+    model: "qwen2.5:7b"
+    # 軽量版: "qwen2.5:3b" または "gemma2:2b"
+  
+  # 生成パラメータ
+  temperature: 0.7
+  max_tokens: 512
+  top_p: 0.9
+  
+  # システムプロンプト
+  system_prompt: |
+    あなたはコア株式会社の電話受付AIアシスタントです。
+    お客様からのお問い合わせに対して、丁寧かつ簡潔に回答してください。
+    
+    回答のルール:
+    - 敬語を使用してください
+    - 回答は3文以内に収めてください
+    - 不明な点は「確認いたします」と伝えてください
+    - 個人情報は取り扱わないでください
+
+# Web UI 設定
+ui:
+  host: "127.0.0.1"
+  port: 7860
+  share: false  # Gradio公開リンクを生成するか
+  
+  # テーマ
+  theme: "soft"  # soft / default / glass
+  
+  # タイトル
+  title: "音声AI受付システム"
+
+# ログ設定
+logging:
+  level: "INFO"
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  file: "logs/app.log"
+  max_size: "10MB"
+  backup_count: 5
+
+# 開発用設定
+development:
+  # 音声入力のモック（テスト用）
+  mock_audio: false
+  
+  # 音声出力の無効化（テスト用）
+  disable_audio_output: false
+  
+  # 会話ログの保存
+  save_conversation_log: true
+  conversation_log_dir: "logs/conversations"

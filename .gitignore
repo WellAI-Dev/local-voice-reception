@@ -1,0 +1,87 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual Environment
+.venv/
+venv/
+ENV/
+env/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Models (large files - download separately)
+models/vosk/
+models/qwen-tts/
+!models/.gitkeep
+
+# Data (user-specific)
+data/knowledge/*.md
+data/voice_samples/*.wav
+data/vectorstore/
+!data/knowledge/.gitkeep
+!data/voice_samples/.gitkeep
+
+# Logs
+logs/
+*.log
+
+# Test outputs
+test_output.wav
+*.wav
+!data/voice_samples/.gitkeep
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# Jupyter
+.ipynb_checkpoints/
+
+# pytest
+.pytest_cache/
+.coverage
+htmlcov/
+
+# mypy
+.mypy_cache/
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# Firebase
+firebase-debug.log
+
+# Claude Code
+.claude/

@@ -1,0 +1,77 @@
+version: '3.8'
+
+services:
+  # ============================================
+  # CPU-only deployment (portable, slower)
+  # ============================================
+  voice-reception-cpu:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: cpu
+    container_name: voice-reception-cpu
+    ports:
+      - "7860:7860"
+    volumes:
+      - ./models:/app/models:ro
+      - ./data/knowledge:/app/data/knowledge:ro
+      - ./data/voice_samples:/app/data/voice_samples:ro
+      - ./config:/app/config:ro
+    environment:
+      - DEVICE=cpu
+      - GRADIO_SERVER_NAME=0.0.0.0
+    restart: unless-stopped
+    profiles:
+      - cpu
+
+  # ============================================
+  # CUDA GPU deployment (fast, requires NVIDIA GPU)
+  # ============================================
+  voice-reception-cuda:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: cuda
+    container_name: voice-reception-cuda
+    ports:
+      - "7860:7860"
+    volumes:
+      - ./models:/app/models:ro
+      - ./data/knowledge:/app/data/knowledge:ro
+      - ./data/voice_samples:/app/data/voice_samples:ro
+      - ./config:/app/config:ro
+    environment:
+      - DEVICE=cuda
+      - GRADIO_SERVER_NAME=0.0.0.0
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    restart: unless-stopped
+    profiles:
+      - cuda
+
+  # ============================================
+  # Ollama LLM service (shared)
+  # ============================================
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    restart: unless-stopped
+
+volumes:
+  ollama_data:
