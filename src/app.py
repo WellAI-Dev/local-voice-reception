@@ -610,13 +610,13 @@ def create_ui(app: VoiceReceptionApp) -> Tuple[gr.Blocks, dict]:
                         label="📝 あなたの発言",
                         lines=2,
                         interactive=False,
-                        show_copy_button=True,
+                        
                     )
                     response_text = gr.Textbox(
                         label="💬 AIの回答",
                         lines=3,
                         interactive=False,
-                        show_copy_button=True,
+                        
                     )
 
         # Conversation history using Chatbot component
@@ -625,7 +625,7 @@ def create_ui(app: VoiceReceptionApp) -> Tuple[gr.Blocks, dict]:
             type="messages",
             height=280,
             elem_classes=["chatbot-container"],
-            show_copy_button=True,
+            
         )
 
         # Action buttons
