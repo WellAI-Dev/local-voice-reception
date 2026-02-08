@@ -21,7 +21,9 @@ import yaml
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.stt import VoskSTT
+from src.stt.dictionary import STTDictionary
 from src.llm import OllamaClient
+from src.llm.knowledge import KnowledgeManager
 from src.tts import QwenTTS
 from src.utils.device import get_device_info
 
@@ -57,12 +59,22 @@ class VoiceReceptionApp:
         self.stt: Optional[VoskSTT] = None
         self.llm: Optional[OllamaClient] = None
         self.tts: Optional[QwenTTS] = None
+        self.stt_dictionary: Optional[STTDictionary] = None
+        self.knowledge_manager: Optional[KnowledgeManager] = None
         self.conversation_log: list = []
         self._tts_sample_rate = 24000
 
     def initialize(self) -> Tuple[bool, str]:
         """Initialize all components."""
         errors = []
+
+        # Initialize STT Dictionary
+        try:
+            stt_dict_path = PROJECT_ROOT / "config" / "stt_dictionary.yaml"
+            self.stt_dictionary = STTDictionary(dict_path=str(stt_dict_path))
+            logger.info("STT dictionary initialized")
+        except Exception as e:
+            logger.warning(f"STT dictionary init warning: {e}")
 
         # Initialize STT
         try:
@@ -74,12 +86,24 @@ class VoiceReceptionApp:
                 self.stt = VoskSTT(
                     model_path=str(model_path),
                     sample_rate=stt_config.get("sample_rate", 16000),
+                    dictionary=self.stt_dictionary,
                 )
                 logger.info("STT initialized")
             else:
                 errors.append(f"Vosk model not found: {model_path}")
         except Exception as e:
             errors.append(f"STT init error: {e}")
+
+        # Initialize Knowledge Manager
+        try:
+            rag_config = self.config.get("rag", {})
+            knowledge_dir = str(
+                PROJECT_ROOT / rag_config.get("knowledge_dir", "data/knowledge")
+            )
+            self.knowledge_manager = KnowledgeManager(knowledge_dir=knowledge_dir)
+            logger.info("Knowledge manager initialized")
+        except Exception as e:
+            logger.warning(f"Knowledge manager init warning: {e}")
 
         # Initialize LLM
         try:
@@ -91,6 +115,7 @@ class VoiceReceptionApp:
                 system_prompt=llm_config.get("system_prompt"),
                 temperature=llm_config.get("temperature", 0.7),
                 max_tokens=llm_config.get("max_tokens", 512),
+                knowledge_manager=self.knowledge_manager,
             )
             if not self.llm.check_connection():
                 errors.append("Ollama server not running")
@@ -162,8 +187,10 @@ class VoiceReceptionApp:
 
         # Thread-safe check of voice clone prompt cache
         if tts_mode == "voice_clone":
-            with self.tts._prompt_lock:
-                has_prompt = self.tts._voice_clone_prompt is not None
+            has_prompt = False
+            if hasattr(self.tts, "_prompt_lock") and hasattr(self.tts, "_voice_clone_prompt"):
+                with self.tts._prompt_lock:
+                    has_prompt = self.tts._voice_clone_prompt is not None
 
             if has_prompt:
                 return self.tts.synthesize_with_clone(
@@ -176,7 +203,7 @@ class VoiceReceptionApp:
 
             # Base model may not support generate_custom_voice,
             # so only fallback if the TTS mode allows it
-            if self.tts.mode == "voice_clone":
+            if hasattr(self.tts, "mode") and self.tts.mode == "voice_clone":
                 logger.warning(
                     "Base model may not support custom_voice synthesis. "
                     "Record your voice via the UI or provide ref_audio in config."
@@ -273,6 +300,9 @@ class VoiceReceptionApp:
 
         yield audio_output, recognized_text, full_response, self.get_conversation_display()
 
+    # Maximum base64 payload size (approx 10 MB raw audio)
+    MAX_BASE64_LENGTH = 14_000_000
+
     def process_base64_audio(
         self,
         audio_base64: str,
@@ -280,6 +310,10 @@ class VoiceReceptionApp:
         """Process base64 encoded audio from PTT (WebM format)."""
         if not audio_base64:
             yield None, "", "音声が入力されていません。", ""
+            return
+
+        if len(audio_base64) > self.MAX_BASE64_LENGTH:
+            yield None, "", "音声データが大きすぎます。短い音声で再度お試しください。", ""
             return
 
         try:
@@ -772,6 +806,220 @@ def create_ui(app: VoiceReceptionApp) -> Tuple[gr.Blocks, dict]:
                 outputs=[clone_status],
             )
 
+        # STT Dictionary management
+        with gr.Accordion("📖 音声認識辞書", open=False):
+            gr.Markdown(
+                "Voskの誤認識を修正する辞書を管理します。"
+                "追加した修正はすぐに反映されます。"
+            )
+
+            # Current corrections display
+            dict_display = gr.Dataframe(
+                headers=["誤認識", "正しい表記", "メモ"],
+                datatype=["str", "str", "str"],
+                label="登録済み修正一覧",
+                interactive=False,
+            )
+
+            # Add correction form
+            with gr.Row():
+                dict_wrong = gr.Textbox(label="誤認識テキスト", scale=2)
+                dict_correct = gr.Textbox(label="正しいテキスト", scale=2)
+                dict_note = gr.Textbox(label="メモ（任意）", scale=2)
+            with gr.Row():
+                dict_add_btn = gr.Button("➕ 修正を追加", size="sm", variant="primary")
+                dict_remove_btn = gr.Button("🗑️ 選択した誤認識を削除", size="sm", variant="secondary")
+
+            dict_status = gr.Textbox(label="ステータス", interactive=False)
+
+            # Pattern section
+            gr.Markdown("### 正規表現パターン")
+            pattern_display = gr.Dataframe(
+                headers=["パターン", "置換"],
+                datatype=["str", "str"],
+                label="登録済みパターン一覧",
+                interactive=False,
+            )
+            with gr.Row():
+                pattern_regex = gr.Textbox(label="正規表現パターン", scale=3)
+                pattern_replacement = gr.Textbox(label="置換テキスト", scale=3)
+            with gr.Row():
+                pattern_add_btn = gr.Button("➕ パターンを追加", size="sm", variant="primary")
+                pattern_remove_btn = gr.Button("🗑️ 選択したパターンを削除", size="sm", variant="secondary")
+
+            def refresh_dict_display():
+                if app.stt_dictionary is None:
+                    return [], []
+                corrections = app.stt_dictionary.list_corrections()
+                patterns = app.stt_dictionary.list_patterns()
+                corr_rows = [
+                    [c.get("wrong", ""), c.get("correct", ""), c.get("note", "")]
+                    for c in corrections
+                ]
+                pat_rows = [
+                    [p.get("pattern", ""), p.get("replacement", "")]
+                    for p in patterns
+                ]
+                return corr_rows, pat_rows
+
+            def add_correction(wrong, correct, note):
+                if not wrong or not correct:
+                    return *refresh_dict_display(), "誤認識テキストと正しいテキストを入力してください。"
+                if app.stt_dictionary is None:
+                    return [], [], "辞書が初期化されていません。"
+                app.stt_dictionary.add_correction(wrong, correct, note)
+                app.stt_dictionary.save()
+                return *refresh_dict_display(), f"追加しました: '{wrong}' → '{correct}'"
+
+            def remove_correction(wrong):
+                if not wrong:
+                    return *refresh_dict_display(), "削除する誤認識テキストを入力してください。"
+                if app.stt_dictionary is None:
+                    return [], [], "辞書が初期化されていません。"
+                removed = app.stt_dictionary.remove_correction(wrong)
+                if removed:
+                    app.stt_dictionary.save()
+                    return *refresh_dict_display(), f"削除しました: '{wrong}'"
+                return *refresh_dict_display(), f"見つかりません: '{wrong}'"
+
+            def add_pattern(regex, replacement):
+                if not regex:
+                    return *refresh_dict_display(), "正規表現パターンを入力してください。"
+                if app.stt_dictionary is None:
+                    return [], [], "辞書が初期化されていません。"
+                try:
+                    app.stt_dictionary.add_pattern(regex, replacement)
+                    app.stt_dictionary.save()
+                    return *refresh_dict_display(), f"パターンを追加しました: '{regex}'"
+                except ValueError as e:
+                    return *refresh_dict_display(), f"無効なパターン: {e}"
+
+            def remove_pattern(regex):
+                if not regex:
+                    return *refresh_dict_display(), "削除するパターンを入力してください。"
+                if app.stt_dictionary is None:
+                    return [], [], "辞書が初期化されていません。"
+                removed = app.stt_dictionary.remove_pattern(regex)
+                if removed:
+                    app.stt_dictionary.save()
+                    return *refresh_dict_display(), f"パターンを削除しました: '{regex}'"
+                return *refresh_dict_display(), f"見つかりません: '{regex}'"
+
+            dict_add_btn.click(
+                fn=add_correction,
+                inputs=[dict_wrong, dict_correct, dict_note],
+                outputs=[dict_display, pattern_display, dict_status],
+            )
+            dict_remove_btn.click(
+                fn=remove_correction,
+                inputs=[dict_wrong],
+                outputs=[dict_display, pattern_display, dict_status],
+            )
+            pattern_add_btn.click(
+                fn=add_pattern,
+                inputs=[pattern_regex, pattern_replacement],
+                outputs=[dict_display, pattern_display, dict_status],
+            )
+            pattern_remove_btn.click(
+                fn=remove_pattern,
+                inputs=[pattern_regex],
+                outputs=[dict_display, pattern_display, dict_status],
+            )
+
+        # Knowledge base management
+        with gr.Accordion("📚 ナレッジベース", open=False):
+            gr.Markdown(
+                "LLMが回答生成時に参照するナレッジ（マークダウン形式）を管理します。"
+                "会社情報やFAQなどを登録すると、AIの回答精度が向上します。"
+            )
+
+            # Current entries display
+            knowledge_display = gr.Dataframe(
+                headers=["ファイル名", "タイトル", "サイズ", "プレビュー"],
+                datatype=["str", "str", "number", "str"],
+                label="登録済みナレッジ一覧",
+                interactive=False,
+            )
+
+            # Add/Edit form
+            with gr.Row():
+                knowledge_title = gr.Textbox(label="タイトル", scale=1)
+            knowledge_content = gr.Textbox(
+                label="内容（マークダウン形式）",
+                lines=8,
+                placeholder="# 会社概要\n\nコア株式会社は...",
+            )
+            with gr.Row():
+                knowledge_add_btn = gr.Button("➕ 登録 / 更新", size="sm", variant="primary")
+                knowledge_filename = gr.Textbox(label="削除するファイル名", scale=2)
+                knowledge_remove_btn = gr.Button("🗑️ 削除", size="sm", variant="secondary")
+
+            knowledge_status = gr.Textbox(label="ステータス", interactive=False)
+
+            # Load button for editing existing
+            with gr.Row():
+                knowledge_load_filename = gr.Textbox(label="読み込むファイル名", scale=3)
+                knowledge_load_btn = gr.Button("📂 読み込む", size="sm")
+
+            def refresh_knowledge_display():
+                if app.knowledge_manager is None:
+                    return []
+                entries = app.knowledge_manager.list_entries()
+                return [
+                    [e["filename"], e["title"], e["size"], e["preview"]]
+                    for e in entries
+                ]
+
+            def add_knowledge(title, content):
+                if not title or not title.strip():
+                    return refresh_knowledge_display(), "タイトルを入力してください。"
+                if not content or not content.strip():
+                    return refresh_knowledge_display(), "内容を入力してください。"
+                if app.knowledge_manager is None:
+                    return [], "ナレッジマネージャーが初期化されていません。"
+                try:
+                    filename = app.knowledge_manager.add_entry(title, content)
+                    return refresh_knowledge_display(), f"保存しました: {filename}"
+                except ValueError as e:
+                    return refresh_knowledge_display(), f"エラー: {e}"
+
+            def remove_knowledge(filename):
+                if not filename or not filename.strip():
+                    return refresh_knowledge_display(), "削除するファイル名を入力してください。"
+                if app.knowledge_manager is None:
+                    return [], "ナレッジマネージャーが初期化されていません。"
+                removed = app.knowledge_manager.remove_entry(filename.strip())
+                if removed:
+                    return refresh_knowledge_display(), f"削除しました: {filename}"
+                return refresh_knowledge_display(), f"見つかりません: {filename}"
+
+            def load_knowledge(filename):
+                if not filename or not filename.strip():
+                    return "", "", "読み込むファイル名を入力してください。"
+                if app.knowledge_manager is None:
+                    return "", "", "ナレッジマネージャーが初期化されていません。"
+                content = app.knowledge_manager.get_entry(filename.strip())
+                if content is None:
+                    return "", "", f"見つかりません: {filename}"
+                title = Path(filename).stem
+                return title, content, f"読み込みました: {filename}"
+
+            knowledge_add_btn.click(
+                fn=add_knowledge,
+                inputs=[knowledge_title, knowledge_content],
+                outputs=[knowledge_display, knowledge_status],
+            )
+            knowledge_remove_btn.click(
+                fn=remove_knowledge,
+                inputs=[knowledge_filename],
+                outputs=[knowledge_display, knowledge_status],
+            )
+            knowledge_load_btn.click(
+                fn=load_knowledge,
+                inputs=[knowledge_load_filename],
+                outputs=[knowledge_title, knowledge_content, knowledge_status],
+            )
+
         # System info accordion
         with gr.Accordion("🔧 システム情報", open=False):
             status_text = gr.Textbox(
@@ -890,9 +1138,19 @@ def create_ui(app: VoiceReceptionApp) -> Tuple[gr.Blocks, dict]:
 
         def on_load():
             success, message = app.initialize()
-            return f"{'✅' if success else '❌'} {message}"
+            corr_rows, pat_rows = refresh_dict_display()
+            know_rows = refresh_knowledge_display()
+            return (
+                f"{'✅' if success else '❌'} {message}",
+                corr_rows,
+                pat_rows,
+                know_rows,
+            )
 
-        demo.load(fn=on_load, outputs=[status_text])
+        demo.load(
+            fn=on_load,
+            outputs=[status_text, dict_display, pattern_display, knowledge_display],
+        )
 
     return demo, theme, custom_css
 

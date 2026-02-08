@@ -1,0 +1,12 @@
+# STT認識辞書 - Voskの誤認識を修正するための辞書
+# UI から追加・削除できます
+
+corrections:
+  - wrong: "こあ"
+    correct: "コア"
+    note: "会社名 (コア株式会社)"
+  - wrong: "こあかぶしきがいしゃ"
+    correct: "コア株式会社"
+    note: "会社名フル"
+
+patterns: []
