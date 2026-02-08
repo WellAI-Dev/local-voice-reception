@@ -2,7 +2,7 @@
 
 ## 概要
 
-本ドキュメントでは、Local Voice Reception AIの技術要件と依存関係を定義します。
+本ドキュメントでは、Local Voice Reception AI の技術要件と依存関係を定義します。
 
 ## ハードウェア要件
 
@@ -28,10 +28,10 @@
 
 | 項目 | サイズ |
 |------|--------|
-| Voskモデル（日本語高精度） | 1GB |
-| Qwen3-TTSモデル（1.7B） | ~3.5GB |
-| LLMモデル（Qwen2.5 7B） | ~4.4GB |
-| ChromaDBベクトルストア | ~500MB（ナレッジ量による） |
+| Vosk モデル（日本語高精度） | 1GB |
+| Qwen3-TTS モデル（1.7B） | ~3.5GB |
+| LLM モデル（Qwen2.5 7B） | ~4.4GB |
+| ChromaDB ベクトルストア | ~500MB（ナレッジ量による） |
 | その他（キャッシュ等） | ~2GB |
 | **合計** | **~12GB** |
 
@@ -41,72 +41,80 @@
 
 | OS | バージョン | 対応状況 |
 |----|-----------|---------|
-| macOS (Apple Silicon) | 14.0+ | ✅ 推奨 |
-| macOS (Intel) | 13.0+ | ⚠️ 動作可能 |
-| Ubuntu | 22.04+ | ⚠️ 要検証 |
-| Windows | 11 | ⚠️ 要検証 |
+| macOS (Apple Silicon) | 14.0+ | 推奨 |
+| macOS (Intel) | 13.0+ | 動作可能 |
+| Ubuntu | 22.04+ | 要検証 |
+| Windows | 11 | 要検証 |
 
-### Python
+### ツーリング
 
-- **バージョン**: 3.11以上
-- **パッケージマネージャ**: pip / poetry
+| ツール | 用途 | インストール |
+|--------|------|-------------|
+| **mise** | タスクランナー + Python ランタイム管理 | `curl https://mise.run \| sh` |
+| **uv** | Python パッケージマネージャー | mise 経由で自動利用 |
+| **Python** | 3.12 | mise で自動管理 |
 
 ## 依存パッケージ
 
-### コア依存関係
+依存関係は `pyproject.toml` で管理され、`uv` でインストールされます。
 
-```
-# requirements.txt
+### コア依存関係（pyproject.toml）
 
-# === Core ===
-numpy>=1.24.0,<2.0.0
-scipy>=1.11.0
-
-# === Audio Processing ===
-sounddevice>=0.4.6
-soundfile>=0.12.1
-pyaudio>=0.2.14
-
-# === Speech Recognition (STT) ===
-vosk>=0.3.45
-
-# === Text-to-Speech (TTS) ===
-qwen-tts>=0.1.0
-torch>=2.1.0
-torchaudio>=2.1.0
-transformers>=4.36.0
-
-# === LLM & RAG ===
-langchain>=0.1.0
-langchain-community>=0.0.20
-chromadb>=0.4.22
-sentence-transformers>=2.2.2
-ollama>=0.1.6
-
-# === Embedding Models ===
-# intfloat/multilingual-e5-small (HuggingFace経由)
-
-# === Web UI ===
-gradio>=4.19.0
-
-# === Utilities ===
-pyyaml>=6.0.1
-python-dotenv>=1.0.0
-tqdm>=4.66.0
-rich>=13.0.0
+```toml
+[project]
+requires-python = ">=3.11"
+dependencies = [
+    # Core
+    "numpy>=1.24.0,<2.0.0",
+    "scipy>=1.11.0",
+    # Audio Processing
+    "sounddevice>=0.4.6",
+    "soundfile>=0.12.1",
+    "pyaudio>=0.2.14",
+    "pydub>=0.25.1",
+    # Text-to-Speech (TTS)
+    "qwen-tts>=0.0.5",
+    "torch>=2.1.0",
+    "torchaudio>=2.1.0",
+    "transformers>=4.36.0",
+    "accelerate>=0.25.0",
+    # LLM & RAG
+    "langchain>=0.1.0",
+    "langchain-community>=0.0.20",
+    "chromadb>=0.4.22",
+    "sentence-transformers>=2.2.2",
+    "ollama>=0.1.6",
+    # Web UI
+    "gradio>=4.19.0",
+    # Utilities
+    "pyyaml>=6.0.1",
+    "python-dotenv>=1.0.0",
+    "tqdm>=4.66.0",
+    "rich>=13.0.0",
+]
 ```
 
-### 開発依存関係
+### Optional 依存関係
 
+```toml
+[project.optional-dependencies]
+# vosk は macOS ARM64 でホイールが提供されないため optional
+stt = ["vosk>=0.3.42,<0.4.0"]
+dev = [
+    "pytest>=8.0",
+    "pytest-cov>=4.0",
+    "pytest-asyncio>=0.23",
+]
 ```
-# requirements-dev.txt
 
-pytest>=7.4.0
-pytest-asyncio>=0.21.0
-black>=23.0.0
-isort>=5.12.0
-mypy>=1.5.0
-ruff>=0.1.0
+### インストール
+
+```bash
+# 本番用
+mise run install
+
+# 開発用（pytest 等含む）
+mise run install-dev
 ```
 
 ## 外部サービス・ツール
@@ -116,8 +124,8 @@ ruff>=0.1.0
 | ツール | 用途 | インストール |
 |--------|------|-------------|
 | Ollama | ローカルLLM実行 | `brew install ollama` |
+| mise | タスクランナー + ランタイム管理 | `curl https://mise.run \| sh` |
 | Homebrew | パッケージ管理 | 公式サイト参照 |
-| Git LFS | 大容量ファイル管理 | `brew install git-lfs` |
 
 ### オプション
 
@@ -125,6 +133,7 @@ ruff>=0.1.0
 |--------|------|-------------|
 | Docker | コンテナ化 | Docker Desktop |
 | FFmpeg | 音声変換 | `brew install ffmpeg` |
+| Git LFS | 大容量ファイル管理 | `brew install git-lfs` |
 
 ## モデル仕様
 
@@ -141,13 +150,13 @@ ruff>=0.1.0
 
 | モデル | パラメータ | 用途 |
 |--------|-----------|------|
+| Qwen3-TTS-12Hz-1.7B-CustomVoice | 1.7B | プリセット音声（custom_voice モード） |
+| Qwen3-TTS-12Hz-1.7B-Base | 1.7B | 音声クローン（voice_clone モード） |
 | Qwen3-TTS-12Hz-0.6B-Base | 0.6B | 軽量・高速 |
-| Qwen3-TTS-12Hz-1.7B-Base | 1.7B | 高品質・音声クローン |
-| Qwen3-TTS-12Hz-1.7B-CustomVoice | 1.7B | プリセット音声 |
 
 **ダウンロード元**: https://huggingface.co/Qwen
 
-### LLMモデル（Ollama経由）
+### LLM モデル（Ollama経由）
 
 | モデル | サイズ | 特徴 |
 |--------|--------|------|
@@ -156,78 +165,6 @@ ruff>=0.1.0
 | gemma2:9b | 5.5GB | 高品質 |
 | gemma2:2b | 1.6GB | 超軽量 |
 | deepseek-r1:7b | 4.7GB | 推論特化 |
-
-## API仕様
-
-### 内部API
-
-```python
-# STT Module API
-class STTModule:
-    def __init__(self, model_path: str) -> None: ...
-    def recognize(self, audio_data: bytes) -> str: ...
-    def stream_recognize(self, audio_stream) -> Generator[str, None, None]: ...
-
-# TTS Module API
-class TTSModule:
-    def __init__(self, model_name: str, voice_config: dict) -> None: ...
-    def synthesize(self, text: str) -> np.ndarray: ...
-    def synthesize_stream(self, text: str) -> Generator[np.ndarray, None, None]: ...
-
-# RAG Pipeline API
-class RAGPipeline:
-    def __init__(self, knowledge_dir: str) -> None: ...
-    def retrieve(self, query: str) -> List[Document]: ...
-    def build_context(self, query: str, documents: List[Document]) -> str: ...
-
-# LLM Interface API
-class LLMInterface:
-    def __init__(self, model_name: str) -> None: ...
-    def generate(self, prompt: str, context: str) -> str: ...
-    def generate_stream(self, prompt: str, context: str) -> Generator[str, None, None]: ...
-```
-
-### 設定ファイル形式
-
-```yaml
-# config/settings.yaml
-
-app:
-  name: "Local Voice Reception AI"
-  version: "0.1.0"
-  debug: false
-
-stt:
-  model_path: "models/vosk/vosk-model-ja-0.22"
-  sample_rate: 16000
-  chunk_size: 8000
-
-tts:
-  model_name: "Qwen/Qwen3-TTS-12Hz-1.7B-Base"
-  device: "mps"  # mps / cuda / cpu
-  dtype: "float16"
-  speaker: "Ono Anna"
-  ref_audio: "data/voice_samples/company_voice.wav"
-  ref_text: "お電話ありがとうございます。コア株式会社でございます。"
-
-rag:
-  knowledge_dir: "data/knowledge"
-  embedding_model: "intfloat/multilingual-e5-small"
-  chunk_size: 500
-  chunk_overlap: 50
-  top_k: 3
-
-llm:
-  provider: "ollama"
-  model: "qwen2.5:7b"
-  temperature: 0.7
-  max_tokens: 512
-
-ui:
-  host: "127.0.0.1"
-  port: 7860
-  share: false
-```
 
 ## パフォーマンス要件
 
@@ -252,48 +189,35 @@ ui:
 2. **機密データの保護**: ナレッジベースへのアクセス制御（将来実装）
 3. **音声データの非永続化**: デフォルトでは音声を保存しない
 4. **ログの匿名化**: 個人を特定可能な情報のマスキング
+5. **STT辞書の ReDoS 防止**: regex パターン長制限（200文字）
 
 ## テスト要件
 
-### 単体テスト
+### テスト実行
 
 ```bash
-pytest tests/unit/ -v
-```
+# 全テスト
+mise run test
 
-### 統合テスト
+# カバレッジ付き
+mise run test-cov
 
-```bash
-pytest tests/integration/ -v
-```
-
-### E2Eテスト
-
-```bash
-pytest tests/e2e/ -v
+# ユニットテストのみ
+mise run test-unit
 ```
 
 ### カバレッジ目標
 
-- 単体テスト: 80%以上
+- ユニットテスト: 80%以上
 - 統合テスト: 主要フローをカバー
 
-## 監視・ログ
+## ログ設定
 
-### ログ形式
+`config/settings.yaml` で設定:
 
-```python
-import logging
-
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
+```yaml
+logging:
+  level: "INFO"
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  file: "logs/app.log"
 ```
-
-### メトリクス（将来実装）
-
-- 応答時間
-- 認識精度
-- エラー率
-- メモリ使用量

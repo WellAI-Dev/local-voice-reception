@@ -3,7 +3,7 @@
 ## 概要
 
 このガイドでは、M4 Max MacBook Pro（Apple Silicon / ARM64）環境での
-Local Voice Reception AIのセットアップ手順を説明します。
+Local Voice Reception AI のセットアップ手順を説明します。
 
 ## 前提条件
 
@@ -13,166 +13,123 @@ Local Voice Reception AIのセットアップ手順を説明します。
 | チップ | Apple M4 Max |
 | メモリ | 32GB以上推奨（64GB理想） |
 | ストレージ | 50GB以上の空き容量 |
-| Python | 3.11以上 |
+| Python | 3.12（mise で自動管理） |
 | Homebrew | インストール済み |
 
-## 1. 基本環境のセットアップ
+## 1. ツーリングのセットアップ
 
-### 1.1 Homebrewパッケージのインストール
+### 1.1 mise のインストール
+
+```bash
+# mise をインストール（タスクランナー + ランタイム管理）
+curl https://mise.run | sh
+
+# シェルに追加（~/.zshrc に追記）
+echo 'eval "$(mise activate zsh)"' >> ~/.zshrc
+source ~/.zshrc
+
+# 確認
+mise --version
+```
+
+### 1.2 Homebrew パッケージのインストール
 
 ```bash
 # オーディオ関連
 brew install portaudio
 brew install ffmpeg
-brew install sox
 
 # 開発ツール
-brew install cmake
 brew install git-lfs
+
+# ローカルLLM
+brew install ollama
 ```
 
-### 1.2 Python環境の構築
+## 2. プロジェクトセットアップ
+
+### 2.1 リポジトリのクローン
 
 ```bash
-# pyenv経由でPythonをインストール（推奨）
-brew install pyenv
-pyenv install 3.11.8
-pyenv local 3.11.8
-
-# または、システムPythonを使用
-python3 --version  # 3.11以上を確認
+git clone https://github.com/WellAI-Dev/local-voice-reception.git
+cd local-voice-reception
 ```
 
-### 1.3 プロジェクト仮想環境の作成
+### 2.2 Python + 依存関係のインストール
 
 ```bash
-cd /path/to/local-voice-reception
+# mise が .mise.toml を読み、Python 3.12 を自動インストール
+mise install
 
-# 仮想環境の作成
-python -m venv .venv
+# 依存関係のインストール（uv sync + vosk optional）
+mise run install
 
-# 仮想環境の有効化
-source .venv/bin/activate
-
-# pipのアップグレード
-pip install --upgrade pip
+# 開発用依存関係も含める場合
+mise run install-dev
 ```
 
-## 2. 依存パッケージのインストール
+> **Note**: `uv` は mise 経由で自動的に利用されます。手動インストール不要です。
+> Vosk は macOS ARM64 ではホイールが提供されていないため、インストールに失敗しても動作に影響しません（optional dependency）。
 
-### 2.1 requirements.txtの作成
+### 2.3 PyAudio のトラブルシューティング
 
-```bash
-cat > requirements.txt << 'EOF'
-# Core
-numpy>=1.24.0
-scipy>=1.11.0
-
-# Audio Processing
-sounddevice>=0.4.6
-soundfile>=0.12.1
-pyaudio>=0.2.14
-
-# Speech Recognition (STT)
-vosk>=0.3.45
-
-# Text-to-Speech (TTS) - Qwen3-TTS
-qwen-tts>=0.1.0
-torch>=2.1.0
-torchaudio>=2.1.0
-
-# LLM & RAG
-langchain>=0.1.0
-langchain-community>=0.0.20
-chromadb>=0.4.22
-sentence-transformers>=2.2.2
-ollama>=0.1.6
-
-# Web UI
-gradio>=4.19.0
-
-# Utilities
-pyyaml>=6.0.1
-python-dotenv>=1.0.0
-tqdm>=4.66.0
-EOF
-```
-
-### 2.2 依存パッケージのインストール
+PyAudio のインストールでエラーが発生する場合:
 
 ```bash
-# 基本パッケージ
-pip install -r requirements.txt
-
-# PyTorch (Apple Silicon最適化版)
-pip install --upgrade torch torchvision torchaudio \
-    --index-url https://download.pytorch.org/whl/cpu
-
-# 注意: M4 MaxではMPS (Metal Performance Shaders) を使用
-```
-
-### 2.3 PyAudioのトラブルシューティング
-
-PyAudioのインストールでエラーが発生する場合:
-
-```bash
-# portaudioのパスを指定してインストール
+# portaudio のパスを指定してインストール
 CFLAGS="-I$(brew --prefix portaudio)/include" \
 LDFLAGS="-L$(brew --prefix portaudio)/lib" \
-pip install pyaudio
+uv pip install pyaudio
 ```
 
 ## 3. モデルのダウンロード
 
-### 3.1 Voskモデル（音声認識）
+### 3.1 Vosk モデル（音声認識）
 
 ```bash
 # モデルディレクトリの作成
 mkdir -p models/vosk
 
-# 日本語モデル（高精度版）のダウンロード
-cd models/vosk
-curl -LO https://alphacephei.com/vosk/models/vosk-model-ja-0.22.zip
-unzip vosk-model-ja-0.22.zip
-rm vosk-model-ja-0.22.zip
-
 # 軽量版（テスト用）
+cd models/vosk
 curl -LO https://alphacephei.com/vosk/models/vosk-model-small-ja-0.22.zip
 unzip vosk-model-small-ja-0.22.zip
 rm vosk-model-small-ja-0.22.zip
 
+# 高精度版（本番用）
+curl -LO https://alphacephei.com/vosk/models/vosk-model-ja-0.22.zip
+unzip vosk-model-ja-0.22.zip
+rm vosk-model-ja-0.22.zip
+
 cd ../..
 ```
 
-### 3.2 Qwen3-TTSモデル（音声合成）
+### 3.2 Qwen3-TTS モデル（音声合成）
+
+Qwen3-TTS はモード設定に応じて Hugging Face から自動ダウンロードされます。
+手動でダウンロードする場合:
 
 ```bash
-# Hugging Face CLIのインストール
-pip install -U "huggingface_hub[cli]"
+# Hugging Face CLI のインストール
+uv pip install -U "huggingface_hub[cli]"
 
-# モデルのダウンロード
-mkdir -p models/qwen-tts
-
-# Tokenizerモデル
+# Tokenizer モデル
 huggingface-cli download Qwen/Qwen3-TTS-Tokenizer-12Hz \
     --local-dir models/qwen-tts/Qwen3-TTS-Tokenizer-12Hz
-
-# Base モデル（音声クローン用）
-huggingface-cli download Qwen/Qwen3-TTS-12Hz-1.7B-Base \
-    --local-dir models/qwen-tts/Qwen3-TTS-12Hz-1.7B-Base
 
 # CustomVoice モデル（プリセット音声用）
 huggingface-cli download Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice \
     --local-dir models/qwen-tts/Qwen3-TTS-12Hz-1.7B-CustomVoice
+
+# Base モデル（音声クローン用）
+huggingface-cli download Qwen/Qwen3-TTS-12Hz-1.7B-Base \
+    --local-dir models/qwen-tts/Qwen3-TTS-12Hz-1.7B-Base
 ```
 
-### 3.3 Ollamaのセットアップ（ローカルLLM）
+### 3.3 Ollama のセットアップ（ローカルLLM）
 
 ```bash
-# Ollamaのインストール
-brew install ollama
-
-# Ollamaサービスの起動
+# Ollama サービスの起動
 ollama serve &
 
 # 推奨モデルのダウンロード
@@ -183,117 +140,64 @@ ollama pull gemma2:2b         # 軽量版（テスト用）
 ollama list
 ```
 
-## 4. M4 Max固有の最適化
+## 4. M4 Max 固有の最適化
 
 ### 4.1 Metal Performance Shaders (MPS) の設定
 
+本プロジェクトでは `config/settings.yaml` の `tts.device: "auto"` により
+MPS を自動検出します。手動で確認するには:
+
 ```python
-# PyTorchでMPSを使用する設定
 import torch
 
-# MPSが利用可能か確認
 print(f"MPS available: {torch.backends.mps.is_available()}")
 print(f"MPS built: {torch.backends.mps.is_built()}")
-
-# デバイスの設定
-device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
 ```
 
-### 4.2 Qwen3-TTS のMPS対応
+### 4.2 Qwen3-TTS の MPS 対応
 
-```python
-from qwen_tts import Qwen3TTSModel
-
-# M4 Max用の設定
-model = Qwen3TTSModel.from_pretrained(
-    "Qwen/Qwen3-TTS-12Hz-1.7B-Base",
-    device_map="mps",           # Apple Silicon用
-    dtype=torch.float16,        # 半精度（メモリ節約）
-    # attn_implementation="sdpa"  # flash-attnの代わり
-)
-```
-
-**注意**: `flash-attn` はApple Siliconでは利用不可。代わりに `sdpa` を使用。
+- `flash-attn` は Apple Silicon では利用不可。代わりに `sdpa` を自動使用
+- dtype は `float32` が使用されます（MPS は bfloat16 非対応）
+- これらの設定はすべて `QwenTTS` クラス内で自動処理されます
 
 ### 4.3 メモリ最適化
 
-```python
-import os
-
-# 環境変数の設定（.envファイルまたはシェル設定）
-os.environ["PYTORCH_MPS_HIGH_WATERMARK_RATIO"] = "0.0"  # メモリ制限を無効化
-
-# メモリキャッシュのクリア
-torch.mps.empty_cache()
+```bash
+# 環境変数の設定（.env ファイルまたはシェル設定）
+export PYTORCH_MPS_HIGH_WATERMARK_RATIO=0.0
 ```
 
 ## 5. 動作確認
 
-### 5.1 Voskの動作確認
-
-```python
-# test_vosk.py
-import vosk
-import json
-
-model = vosk.Model("models/vosk/vosk-model-ja-0.22")
-recognizer = vosk.KaldiRecognizer(model, 16000)
-
-print("Voskモデルの読み込み成功！")
-```
+### 5.1 テストの実行
 
 ```bash
-python test_vosk.py
+# 全テスト実行
+mise run test
+
+# カバレッジ付き
+mise run test-cov
 ```
 
-### 5.2 Qwen3-TTSの動作確認
-
-```python
-# test_qwen_tts.py
-import torch
-from qwen_tts import Qwen3TTSModel
-import soundfile as sf
-
-# モデルの読み込み
-model = Qwen3TTSModel.from_pretrained(
-    "models/qwen-tts/Qwen3-TTS-12Hz-1.7B-CustomVoice",
-    device_map="mps",
-    dtype=torch.float16,
-)
-
-# 音声生成
-wavs, sr = model.generate_custom_voice(
-    text="こんにちは、コア株式会社でございます。",
-    language="Japanese",
-    speaker="Ono Anna",
-)
-
-# ファイルに保存
-sf.write("test_output.wav", wavs[0], sr)
-print("音声生成成功！test_output.wavを確認してください。")
-```
+### 5.2 アプリケーションの起動
 
 ```bash
-python test_qwen_tts.py
-afplay test_output.wav  # macOSで再生
+# アプリケーション起動
+mise run run
 ```
 
-### 5.3 Ollamaの動作確認
+ブラウザで http://localhost:7860 を開き、以下を確認:
 
-```python
-# test_ollama.py
-import ollama
+1. **会話タブ**: Push-to-Talk ボタンが表示される
+2. **STT辞書タブ**: 辞書の確認・編集ができる
+3. **ナレッジ管理タブ**: ナレッジベースの管理ができる
+4. **音声クローン設定タブ**: 声の録音・登録ができる
 
-response = ollama.generate(
-    model="qwen2.5:7b",
-    prompt="こんにちは、簡単な自己紹介をしてください。"
-)
-
-print(response['response'])
-```
+### 5.3 Ollama の動作確認
 
 ```bash
-python test_ollama.py
+# CLI で直接テスト
+ollama run qwen2.5:7b "こんにちは、簡単な自己紹介をしてください。"
 ```
 
 ## 6. トラブルシューティング
@@ -302,56 +206,42 @@ python test_ollama.py
 
 | エラー | 原因 | 解決策 |
 |--------|------|--------|
-| `MPS backend out of memory` | VRAMが不足 | `torch.mps.empty_cache()` を呼び出す |
-| `No module named 'vosk'` | voskがインストールされていない | `pip install vosk` |
-| `PortAudio not found` | portaudioがない | `brew install portaudio` |
-| `Ollama connection refused` | Ollamaが起動していない | `ollama serve` で起動 |
+| `MPS backend out of memory` | VRAM が不足 | `torch.mps.empty_cache()` を呼び出す |
+| `No module named 'vosk'` | vosk がインストールされていない | macOS ARM64 では optional（STT 無しで動作可） |
+| `PortAudio not found` | portaudio がない | `brew install portaudio` |
+| `Ollama connection refused` | Ollama が起動していない | `ollama serve` で起動 |
+| `mise: command not found` | mise がパスにない | `eval "$(mise activate zsh)"` を実行 |
 
-### 6.2 M4 Max特有の問題
+### 6.2 M4 Max 特有の問題
 
-**flash-attnエラー**:
-```
-error: flash-attn is not available on Apple Silicon
-```
+**flash-attn エラー**:
+Apple Silicon では flash-attn が利用不可ですが、`QwenTTS` クラスが自動的に `sdpa` にフォールバックします。
 
-解決策: Qwen3-TTSの起動時に `--no-flash-attn` オプションを使用:
+**MPS メモリエラー**:
 ```bash
-qwen-tts-demo Qwen/Qwen3-TTS-12Hz-1.7B-Base --device mps --no-flash-attn
-```
-
-**MPSメモリエラー**:
-```python
-# より小さいモデルを使用
-model = Qwen3TTSModel.from_pretrained(
-    "Qwen/Qwen3-TTS-12Hz-0.6B-Base",  # 0.6Bモデル
-    device_map="mps",
-    dtype=torch.float16,
-)
+# メモリ制限を無効化
+export PYTORCH_MPS_HIGH_WATERMARK_RATIO=0.0
 ```
 
 ## 7. 推奨設定まとめ
 
-```yaml
-# config/m4_max_settings.yaml
-hardware:
-  device: "mps"
-  dtype: "float16"
-  memory_optimization: true
+`config/settings.yaml` のデフォルト設定は M4 Max 向けに最適化されています:
 
-models:
-  stt:
-    name: "vosk-model-ja-0.22"
-    sample_rate: 16000
-  
-  tts:
-    name: "Qwen3-TTS-12Hz-1.7B-Base"
-    flash_attn: false
-    speaker: "Ono Anna"
-  
-  llm:
-    provider: "ollama"
-    model: "qwen2.5:7b"
-    temperature: 0.7
+```yaml
+tts:
+  device: "auto"          # MPS を自動検出
+  mode: "custom_voice"    # プリセット話者で開始
+  preload: true           # 起動時にモデルをプリロード
+  custom_voice:
+    speaker: "ono_anna"
+    language: "Japanese"
+
+llm:
+  ollama:
+    model: "qwen2.5:7b"   # バランス型
+
+stt:
+  model_path: "models/vosk/vosk-model-small-ja-0.22"
 ```
 
 ## 次のステップ

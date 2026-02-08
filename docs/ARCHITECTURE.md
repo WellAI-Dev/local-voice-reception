@@ -14,46 +14,37 @@
 │                                                                         │
 │  ┌─────────────────────────────────────────────────────────────────┐   │
 │  │                    Presentation Layer (UI)                       │   │
-│  │  ┌─────────────────────────────────────────────────────────┐    │   │
-│  │  │                  Gradio Web Interface                    │    │   │
-│  │  │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐   │    │   │
-│  │  │  │ 音声入力     │  │ 会話ログ     │  │ ステータス   │   │    │   │
-│  │  │  │ ボタン       │  │ 表示エリア   │  │ 表示         │   │    │   │
-│  │  │  └──────────────┘  └──────────────┘  └──────────────┘   │    │   │
-│  │  └─────────────────────────────────────────────────────────┘    │   │
+│  │  ┌──────────────────────────────────────────────────────────┐   │   │
+│  │  │                 Gradio Web Interface                      │   │   │
+│  │  │  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐   │   │   │
+│  │  │  │ 会話     │ │ STT辞書  │ │ ナレッジ │ │ 音声     │   │   │   │
+│  │  │  │ タブ     │ │ タブ     │ │ 管理タブ │ │ クローン │   │   │   │
+│  │  │  └──────────┘ └──────────┘ └──────────┘ └──────────┘   │   │   │
+│  │  └──────────────────────────────────────────────────────────┘   │   │
 │  └─────────────────────────────────────────────────────────────────┘   │
 │                                    │                                    │
-│                                    ▼                                    │
+│                                    v                                    │
 │  ┌─────────────────────────────────────────────────────────────────┐   │
 │  │                    Application Layer                             │   │
 │  │                                                                   │   │
 │  │  ┌──────────────┐     ┌──────────────┐     ┌──────────────┐     │   │
-│  │  │   STT        │     │   対話       │     │   TTS        │     │   │
-│  │  │   Module     │────▶│   Manager    │────▶│   Module     │     │   │
-│  │  │   (Vosk)     │     │              │     │  (Qwen3-TTS) │     │   │
+│  │  │  VoskSTT     │     │ OllamaClient │     │  QwenTTS     │     │   │
+│  │  │  + STT辞書   │────>│ + RAG        │────>│  (dual-mode) │     │   │
+│  │  │              │     │              │     │              │     │   │
 │  │  └──────────────┘     └──────┬───────┘     └──────────────┘     │   │
 │  │                              │                                   │   │
-│  │                              ▼                                   │   │
+│  │                              v                                   │   │
 │  │  ┌───────────────────────────────────────────────────────────┐  │   │
-│  │  │                   RAG Pipeline                             │  │   │
+│  │  │                 KnowledgeManager (RAG)                     │  │   │
 │  │  │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐    │  │   │
-│  │  │  │ Query        │  │ Vector       │  │ Context      │    │  │   │
-│  │  │  │ Processor    │──│ Search       │──│ Builder      │    │  │   │
-│  │  │  │              │  │ (ChromaDB)   │  │              │    │  │   │
+│  │  │  │ Document     │  │ ChromaDB     │  │ Context      │    │  │   │
+│  │  │  │ Loader       │──│ Vector Store │──│ Builder      │    │  │   │
+│  │  │  │              │  │              │  │              │    │  │   │
 │  │  │  └──────────────┘  └──────────────┘  └──────────────┘    │  │   │
-│  │  └───────────────────────────────────────────────────────────┘  │   │
-│  │                              │                                   │   │
-│  │                              ▼                                   │   │
-│  │  ┌───────────────────────────────────────────────────────────┐  │   │
-│  │  │                   LLM Interface                            │  │   │
-│  │  │  ┌──────────────────────────────────────────────────────┐ │  │   │
-│  │  │  │              Ollama / vLLM                            │ │  │   │
-│  │  │  │         (Qwen3 / Gemma / DeepSeek-R1)                │ │  │   │
-│  │  │  └──────────────────────────────────────────────────────┘ │  │   │
 │  │  └───────────────────────────────────────────────────────────┘  │   │
 │  └─────────────────────────────────────────────────────────────────┘   │
 │                                    │                                    │
-│                                    ▼                                    │
+│                                    v                                    │
 │  ┌─────────────────────────────────────────────────────────────────┐   │
 │  │                    Data Layer                                    │   │
 │  │                                                                   │   │
@@ -63,10 +54,10 @@
 │  │  │              │  │ (ChromaDB)   │  │              │           │   │
 │  │  └──────────────┘  └──────────────┘  └──────────────┘           │   │
 │  │                                                                   │   │
-│  │  ┌──────────────┐  ┌──────────────┐                             │   │
-│  │  │ Pronunciation│  │ Config       │                             │   │
-│  │  │ Dictionary   │  │ Settings     │                             │   │
-│  │  └──────────────┘  └──────────────┘                             │   │
+│  │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐           │   │
+│  │  │ Pronunciation│  │ STT          │  │ Config       │           │   │
+│  │  │ Dictionary   │  │ Dictionary   │  │ Settings     │           │   │
+│  │  └──────────────┘  └──────────────┘  └──────────────┘           │   │
 │  └─────────────────────────────────────────────────────────────────┘   │
 │                                                                         │
 └─────────────────────────────────────────────────────────────────────────┘
@@ -74,137 +65,184 @@
 
 ## コンポーネント詳細
 
-### 1. STT Module (音声認識)
+### 1. VoskSTT（音声認識）
 
-**技術**: Vosk
+**ファイル**: `src/stt/vosk_stt.py`
 
 ```python
-# 基本構成
-class STTModule:
-    def __init__(self, model_path: str):
-        self.model = vosk.Model(model_path)
-        self.recognizer = vosk.KaldiRecognizer(self.model, 16000)
-    
-    def recognize(self, audio_data: bytes) -> str:
+class VoskSTT:
+    def __init__(self, model_path: str, sample_rate: int = 16000):
+        """Vosk モデルを読み込み、KaldiRecognizer を初期化"""
+
+    def recognize(self, audio_data: np.ndarray, sample_rate: int) -> str:
         """音声データをテキストに変換"""
-        pass
-    
-    def stream_recognize(self, audio_stream) -> Generator[str, None, None]:
-        """ストリーミング音声認識"""
-        pass
 ```
 
 **特徴**:
 - 完全オフライン動作
-- ストリーミング対応（リアルタイム認識）
-- 日本語モデル: `vosk-model-ja-0.22`（1GB、高精度）
+- 日本語モデル: `vosk-model-small-ja-0.22`（テスト用）/ `vosk-model-ja-0.22`（本番用）
+- macOS ARM64 では optional dependency（wheel 未提供のため）
 
-### 2. TTS Module (音声合成)
+### 2. STTDictionary（認識後補正）
 
-**技術**: Qwen3-TTS
+**ファイル**: `src/stt/dictionary.py`
 
 ```python
-# 基本構成
-class TTSModule:
-    def __init__(self, model_name: str, voice_config: dict):
-        self.model = Qwen3TTSModel.from_pretrained(
-            model_name,
-            device_map="mps",  # Apple Silicon
-            dtype=torch.float16
-        )
-        self.voice_config = voice_config
-        self.pronunciation_dict = load_pronunciation_dict()
-    
-    def synthesize(self, text: str) -> np.ndarray:
-        """テキストを音声に変換"""
-        # 発音辞書による前処理
-        processed_text = self._preprocess_text(text)
-        # 音声合成
-        wavs, sr = self.model.generate_voice_clone(
-            text=processed_text,
-            ref_audio=self.voice_config["ref_audio"],
-            ref_text=self.voice_config["ref_text"]
-        )
-        return wavs[0]
+class STTDictionary:
+    def __init__(self, dict_path: str = "config/stt_dictionary.yaml"):
+        """YAML 辞書ファイルを読み込み"""
+
+    def correct(self, text: str) -> str:
+        """exact 置換 → regex パターン の順で補正を適用"""
+
+    def add_correction(self, wrong: str, correct: str, note: str = "") -> None:
+        """補正エントリを追加（既存の場合は更新）"""
+
+    def add_pattern(self, pattern: str, replacement: str) -> None:
+        """正規表現パターンを追加（バリデーション付き）"""
+
+    def replace_all(self, corrections: list[dict], patterns: list[dict]) -> None:
+        """UI からの一括更新用"""
+
+    def save(self) -> None:
+        """辞書を YAML ファイルに保存"""
 ```
 
 **特徴**:
-- 97ms低レイテンシ（リアルタイム対話可能）
-- 音声クローン機能（3秒サンプルから複製）
-- 日本語ネイティブ話者プリセット（Ono Anna）
+- Vosk の誤認識を後処理で補正
+- exact 置換（最長マッチ優先）と regex パターンの2段階
+- UI から直接編集可能（interactive DataFrame）
+- スレッドセーフ（`threading.Lock`）
 
-### 3. RAG Pipeline
+### 3. QwenTTS（音声合成）
 
-**技術**: LangChain + ChromaDB
-
-```python
-# 基本構成
-class RAGPipeline:
-    def __init__(self, knowledge_dir: str):
-        self.embeddings = HuggingFaceEmbeddings(
-            model_name="intfloat/multilingual-e5-small"
-        )
-        self.vectorstore = Chroma(
-            persist_directory="./chroma_db",
-            embedding_function=self.embeddings
-        )
-        self.retriever = self.vectorstore.as_retriever(
-            search_kwargs={"k": 3}
-        )
-    
-    def retrieve(self, query: str) -> List[Document]:
-        """関連ドキュメントを検索"""
-        return self.retriever.get_relevant_documents(query)
-    
-    def build_context(self, query: str, documents: List[Document]) -> str:
-        """コンテキストを構築"""
-        pass
-```
-
-**ナレッジ形式**:
-- Markdownファイル（WellAIサマリ）
-- チャンクサイズ: 500文字
-- オーバーラップ: 50文字
-
-### 4. LLM Interface
-
-**技術**: Ollama (ローカルLLM実行)
+**ファイル**: `src/tts/qwen_tts.py`
 
 ```python
-# 基本構成
-class LLMInterface:
-    def __init__(self, model_name: str = "qwen2.5:7b"):
-        self.model_name = model_name
-        self.client = ollama.Client()
-    
-    def generate(self, prompt: str, context: str) -> str:
-        """回答を生成"""
-        full_prompt = self._build_prompt(prompt, context)
-        response = self.client.generate(
-            model=self.model_name,
-            prompt=full_prompt
-        )
-        return response['response']
+class QwenTTS:
+    def __init__(self, model_name: str = None, device: str = "auto",
+                 mode: str = "custom_voice", ...):
+        """デュアルモード TTS の初期化"""
+
+    def synthesize(self, text: str, speaker: str, language: str,
+                   instruct: str = None) -> tuple[np.ndarray, int]:
+        """custom_voice モードでの音声合成"""
+
+    def synthesize_with_clone(self, text: str, language: str) -> tuple[np.ndarray, int]:
+        """voice_clone モードでの音声合成（キャッシュ済みプロンプト使用）"""
+
+    def switch_mode(self, new_mode: str) -> None:
+        """ランタイムでのモード切り替え（モデル入れ替え）"""
+
+    def prepare_clone(self, ref_audio: str, ref_text: str, language: str) -> None:
+        """音声クローン用プロンプトを事前生成してキャッシュ"""
+
+    def update_reference_audio(self, ref_audio_path: str, ref_text: str,
+                               language: str) -> None:
+        """参照音声を更新してプロンプトを再生成"""
+
+    def preload(self) -> None:
+        """モデルの事前ロード（初回遅延の回避）"""
 ```
 
-**推奨モデル（M4 Max用）**:
+**デュアルモード**:
+
+| モード | モデル | 用途 |
+|--------|--------|------|
+| `custom_voice` | `Qwen3-TTS-12Hz-1.7B-CustomVoice` | プリセット話者（ono_anna 等） |
+| `voice_clone` | `Qwen3-TTS-12Hz-1.7B-Base` | 録音した声のクローン |
+
+**スレッドセーフティ**:
+- `_model_lock` (Lock): モデルのロード/アンロード
+- `_prompt_lock` (RLock): voice_clone_prompt キャッシュのアクセス
+
+### 4. OllamaClient（LLM）
+
+**ファイル**: `src/llm/ollama_client.py`
+
+```python
+class OllamaClient:
+    def __init__(self, base_url: str, model: str, system_prompt: str, ...):
+        """Ollama クライアントの初期化"""
+
+    def generate(self, user_message: str, context: str = "") -> str:
+        """コンテキスト付きで回答を生成"""
+
+    def check_connection(self) -> bool:
+        """Ollama サーバーへの接続確認"""
+
+    def clear_history(self) -> None:
+        """会話履歴をクリア"""
+```
+
+**推奨モデル（M4 Max 用）**:
+
 | モデル | サイズ | 特徴 |
 |--------|--------|------|
 | qwen2.5:7b | 4.4GB | バランス型、日本語良好 |
 | gemma2:9b | 5.5GB | 高品質、やや重い |
 | deepseek-r1:7b | 4.7GB | 推論特化 |
 
+### 5. KnowledgeManager（RAG）
+
+**ファイル**: `src/llm/knowledge_manager.py`
+
+```python
+class KnowledgeManager:
+    def __init__(self, knowledge_dir: str, vectorstore_dir: str,
+                 embedding_model: str, ...):
+        """RAG パイプラインの初期化"""
+
+    def add_document(self, file_path: str) -> None:
+        """Markdown ドキュメントをベクトルストアに追加"""
+
+    def search(self, query: str, top_k: int = 3) -> list[dict]:
+        """類似ドキュメントを検索"""
+
+    def rebuild_index(self) -> None:
+        """ベクトルストアを全再構築"""
+```
+
+**ナレッジ形式**:
+- Markdown ファイル（WellAI サマリ）
+- チャンクサイズ: 500文字（設定可能）
+- Embedding: `intfloat/multilingual-e5-small`
+
+### 6. VoiceReceptionApp（メインアプリケーション）
+
+**ファイル**: `src/app.py`
+
+```python
+class VoiceReceptionApp:
+    def __init__(self, config: dict):
+        """設定を読み込み、各コンポーネントの参照を保持"""
+
+    def initialize(self) -> None:
+        """STT, LLM, TTS, KnowledgeManager を初期化"""
+
+    def _synthesize_speech(self, text: str) -> tuple[np.ndarray, int]:
+        """self.tts.mode に応じて適切な TTS メソッドを呼び出し"""
+
+    def get_conversation_display(self) -> str:
+        """会話ログのテキスト表現を返す"""
+
+    def clear_conversation(self) -> None:
+        """会話履歴をクリア"""
+```
+
+**UI 構成** (`create_ui()` 関数):
+- **会話タブ**: Push-to-Talk、Chatbot、音声出力
+- **STT辞書タブ**: corrections/patterns の DataFrame 編集 + 保存
+- **ナレッジ管理タブ**: ドキュメントの追加・削除・再構築
+- **音声クローン設定タブ**: 音声録音 → `switch_mode("voice_clone")` → `update_reference_audio()`
+- **設定タブ**: TTS/LLM パラメータの調整
+
 ## データフロー
 
 ### 1. 音声入力→テキスト変換
 
 ```
-[マイク] → [音声データ (16kHz)] → [Vosk] → [テキスト]
-                                      │
-                            ┌─────────┴─────────┐
-                            │ 部分認識結果      │
-                            │ (リアルタイム表示) │
-                            └───────────────────┘
+[マイク] → [音声データ (16kHz)] → [VoskSTT] → [STTDictionary] → [補正済みテキスト]
 ```
 
 ### 2. テキスト→回答生成
@@ -212,17 +250,17 @@ class LLMInterface:
 ```
 [ユーザー質問]
        │
-       ▼
-[Embedding変換] → [ベクトル検索] → [関連ドキュメント取得]
-                                          │
-                                          ▼
-                              [コンテキスト構築]
-                                          │
-                                          ▼
-                              [LLMプロンプト生成]
-                                          │
-                                          ▼
-                              [回答生成 (Ollama)]
+       v
+[KnowledgeManager.search()] → [関連ドキュメント取得]
+                                       │
+                                       v
+                           [コンテキスト構築]
+                                       │
+                                       v
+                           [OllamaClient.generate()]
+                                       │
+                                       v
+                           [回答テキスト]
 ```
 
 ### 3. 回答テキスト→音声出力
@@ -230,66 +268,41 @@ class LLMInterface:
 ```
 [回答テキスト]
        │
-       ▼
-[発音辞書による前処理]
+       v
+[発音辞書による前処理 (_preprocess_text)]
        │
-       ▼
-[Qwen3-TTS 音声合成]
+       v
+[QwenTTS (mode に応じて分岐)]
+  ├── custom_voice: synthesize(text, speaker, language)
+  └── voice_clone:  synthesize_with_clone(text, language)
        │
-       ▼
-[音声クローン適用]
-       │
-       ▼
+       v
 [スピーカー出力]
 ```
 
-## 発音辞書システム
+### 4. 音声クローン登録フロー
 
-### 構造
-
-```yaml
-# config/pronunciation_dict.yaml
-terms:
-  - original: "Cor.Inc"
-    reading: "コア インク"
-    priority: high
-  
-  - original: "TapForge"
-    reading: "タップフォージ"
-    priority: high
-  
-  - original: "WellAI"
-    reading: "ウェルエーアイ"
-    priority: high
-
-patterns:
-  # 正規表現パターン
-  - pattern: "([0-9]+)円"
-    replacement: "\\1えん"
 ```
-
-### 処理フロー
-
-```python
-def preprocess_text(text: str, dict_config: dict) -> str:
-    """発音辞書による前処理"""
-    # 1. 高優先度の固有名詞を置換
-    for term in dict_config["terms"]:
-        if term["priority"] == "high":
-            text = text.replace(term["original"], term["reading"])
-    
-    # 2. パターンマッチング
-    for pattern in dict_config["patterns"]:
-        text = re.sub(pattern["pattern"], pattern["replacement"], text)
-    
-    return text
+[UI: 音声録音 + テキスト入力]
+       │
+       v
+[WAV ファイル保存 (data/voice_samples/)]
+       │
+       v
+[QwenTTS.switch_mode("voice_clone")]  ← モデルを Base に切り替え
+       │
+       v
+[QwenTTS.update_reference_audio()]    ← プロンプトキャッシュ生成
+       │
+       v
+[config["tts"]["mode"] = "voice_clone"]
 ```
 
 ## セキュリティ考慮事項
 
 1. **データの外部送信なし**: すべての処理がローカルで完結
-2. **ナレッジベースの保護**: アクセス制御（将来実装）
-3. **音声データの非保存**: 一時処理のみ（オプションで録音可能）
+2. **STT辞書の regex バリデーション**: パターン長制限（200文字）で ReDoS を防止
+3. **音声データの非保存**: 一時処理のみ（音声クローン用サンプルは明示的に保存）
 
 ## スケーラビリティ
 
