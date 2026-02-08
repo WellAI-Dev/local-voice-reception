@@ -419,7 +419,7 @@ if __name__ == "__main__":
     print("\nSynthesizing test audio (custom_voice)...")
 
     audio, sr = tts_custom.synthesize(
-        text="お電話ありがとうございます。コア株式会社でございます。",
+        text="お電話ありがとうございます。株式会社WellAIでございます。",
         speaker="Ono_Anna",
         language="Japanese",
     )
@@ -436,7 +436,7 @@ if __name__ == "__main__":
         )
         tts_clone.prepare_clone(
             ref_audio_path=ref_audio,
-            ref_text="お電話ありがとうございます。コア株式会社でございます。",
+            ref_text="お電話ありがとうございます。株式会社WellAIでございます。",
             language="Japanese",
         )
 

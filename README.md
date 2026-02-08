@@ -220,8 +220,8 @@ STT辞書で音声認識の誤変換を補正:
 
 ```yaml
 corrections:
-  - wrong: "こあ"
-    correct: "コア"
+  - wrong: "うぇるあい"
+    correct: "WellAI"
     note: "会社名"
 
 patterns:
@@ -235,8 +235,8 @@ patterns:
 
 ```yaml
 terms:
-  - original: "Cor.Inc"
-    reading: "コア インク"
+  - original: "WellAI"
+    reading: "ウェルアイ"
 ```
 
 ## テスト
@@ -269,4 +269,4 @@ uv run pytest tests/test_app.py -v
 
 ---
 
-**Cor.Inc** - Communication beyond words
+**WellAI** - AI for Well-being

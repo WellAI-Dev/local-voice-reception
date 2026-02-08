@@ -1027,7 +1027,7 @@ def create_ui(app: VoiceReceptionApp) -> Tuple[gr.Blocks, dict]:
             knowledge_content = gr.Textbox(
                 label="内容（マークダウン形式）",
                 lines=8,
-                placeholder="# 会社概要\n\nコア株式会社は...",
+                placeholder="# 会社概要\n\n株式会社WellAIは...",
             )
             with gr.Row():
                 knowledge_add_btn = gr.Button("➕ 登録 / 更新", size="sm", variant="primary")

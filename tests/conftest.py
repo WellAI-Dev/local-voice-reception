@@ -53,8 +53,8 @@ def pronunciation_dict_path(tmp_path):
     """Create a temporary pronunciation dictionary."""
     dict_content = """
 terms:
-  - original: "Cor.Inc"
-    reading: "コア インク"
+  - original: "WellAI"
+    reading: "ウェルアイ"
     priority: high
   - original: "API"
     reading: "エーピーアイ"

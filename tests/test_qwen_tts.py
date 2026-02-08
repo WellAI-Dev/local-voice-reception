@@ -104,9 +104,9 @@ class TestPronunciationDict:
         mock_detect.return_value = mock_device_config
         tts = QwenTTS(pronunciation_dict_path=pronunciation_dict_path)
 
-        result = tts._preprocess_text("Cor.Incへようこそ")
-        assert "コア インク" in result
-        assert "Cor.Inc" not in result
+        result = tts._preprocess_text("WellAIへようこそ")
+        assert "ウェルアイ" in result
+        assert "WellAI" not in result
 
     @patch("src.utils.device.detect_device")
     def test_preprocess_pattern_replacement(self, mock_detect, mock_device_config, pronunciation_dict_path):
@@ -121,7 +121,7 @@ class TestPronunciationDict:
         mock_detect.return_value = mock_device_config
         tts = QwenTTS()
 
-        text = "Cor.Inc 500円"
+        text = "WellAI 500円"
         assert tts._preprocess_text(text) == text
 
     @patch("src.utils.device.detect_device")
@@ -197,9 +197,9 @@ class TestSynthesizeCustomVoice:
         tts = QwenTTS(pronunciation_dict_path=pronunciation_dict_path)
         tts.model = mock_tts_model
 
-        tts.synthesize("Cor.Incです", language="Japanese")
+        tts.synthesize("WellAIです", language="Japanese")
         call_args = mock_tts_model.generate_custom_voice.call_args
-        assert "コア インク" in call_args.kwargs["text"]
+        assert "ウェルアイ" in call_args.kwargs["text"]
 
 
 # ---------------------------------------------------------------------------

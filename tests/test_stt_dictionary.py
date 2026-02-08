@@ -23,9 +23,9 @@ def stt_dict_path(tmp_path):
     """Create a temporary STT dictionary YAML file."""
     dict_content = {
         "corrections": [
-            {"wrong": "こあ", "correct": "コア", "note": "会社名"},
+            {"wrong": "みらい", "correct": "MIRAI", "note": "製品名"},
             {"wrong": "えーぴーあい", "correct": "API", "note": "技術用語"},
-            {"wrong": "こあかぶしきがいしゃ", "correct": "コア株式会社", "note": "会社名フル"},
+            {"wrong": "うぇるあい", "correct": "WellAI", "note": "会社名"},
         ],
         "patterns": [
             {"pattern": "おでんわ", "replacement": "お電話"},
@@ -61,8 +61,8 @@ class TestLoading:
     def test_load_valid_dictionary(self, stt_dict):
         corrections = stt_dict.list_corrections()
         assert len(corrections) == 3
-        assert corrections[0]["wrong"] == "こあ"
-        assert corrections[0]["correct"] == "コア"
+        assert corrections[0]["wrong"] == "みらい"
+        assert corrections[0]["correct"] == "MIRAI"
 
     def test_load_patterns(self, stt_dict):
         patterns = stt_dict.list_patterns()
@@ -155,13 +155,13 @@ class TestCorrection:
     """Test text correction functionality."""
 
     def test_exact_correction(self, stt_dict):
-        result = stt_dict.correct("こあにでんわしました")
-        assert "コア" in result
-        assert "こあ" not in result
+        result = stt_dict.correct("みらいにでんわしました")
+        assert "MIRAI" in result
+        assert "みらい" not in result
 
     def test_multiple_corrections_in_text(self, stt_dict):
-        result = stt_dict.correct("こあのえーぴーあいを使う")
-        assert "コア" in result
+        result = stt_dict.correct("みらいのえーぴーあいを使う")
+        assert "MIRAI" in result
         assert "API" in result
 
     def test_pattern_correction(self, stt_dict):
@@ -182,12 +182,13 @@ class TestCorrection:
 
     def test_longest_match_first(self, stt_dict):
         """Longer corrections should be applied first to avoid partial matches."""
-        result = stt_dict.correct("こあかぶしきがいしゃにでんわ")
-        assert "コア株式会社" in result
+        result = stt_dict.correct("うぇるあいのみらいにでんわ")
+        assert "WellAI" in result
+        assert "MIRAI" in result
 
     def test_empty_dictionary_returns_original(self, empty_dict_path):
         dictionary = STTDictionary(empty_dict_path)
-        text = "こあにでんわしました"
+        text = "みらいにでんわしました"
         assert dictionary.correct(text) == text
 
     def test_correction_with_invalid_pattern(self, tmp_path):
@@ -220,13 +221,13 @@ class TestCorrectionCRUD:
         assert "ふぁいる" in wrong_values
 
     def test_add_correction_updates_existing(self, stt_dict):
-        stt_dict.add_correction("こあ", "Core", "英語表記")
+        stt_dict.add_correction("みらい", "Core", "英語表記")
         corrections = stt_dict.list_corrections()
-        entry = next(c for c in corrections if c["wrong"] == "こあ")
+        entry = next(c for c in corrections if c["wrong"] == "みらい")
         assert entry["correct"] == "Core"
         assert entry["note"] == "英語表記"
         # Should not add a duplicate
-        assert sum(1 for c in corrections if c["wrong"] == "こあ") == 1
+        assert sum(1 for c in corrections if c["wrong"] == "みらい") == 1
 
     def test_add_correction_without_note(self, stt_dict):
         stt_dict.add_correction("ぷろぐらむ", "プログラム")
@@ -235,10 +236,10 @@ class TestCorrectionCRUD:
         assert entry["note"] == ""
 
     def test_remove_correction(self, stt_dict):
-        assert stt_dict.remove_correction("こあ") is True
+        assert stt_dict.remove_correction("みらい") is True
         corrections = stt_dict.list_corrections()
         wrong_values = [c["wrong"] for c in corrections]
-        assert "こあ" not in wrong_values
+        assert "みらい" not in wrong_values
 
     def test_remove_nonexistent_correction(self, stt_dict):
         assert stt_dict.remove_correction("存在しない") is False
@@ -319,8 +320,8 @@ class TestEdgeCases:
         assert "AIU" in result
 
     def test_corrections_and_patterns_combined(self, stt_dict):
-        result = stt_dict.correct("こあにおでんわしました 500えんです")
-        assert "コア" in result
+        result = stt_dict.correct("みらいにおでんわしました 500えんです")
+        assert "MIRAI" in result
         assert "お電話" in result
         assert "500円" in result
 
@@ -405,7 +406,7 @@ class TestVoskSTTIntegration:
         mock_recognizer = MagicMock()
         mock_recognizer.AcceptWaveform.return_value = True
         mock_recognizer.FinalResult.return_value = json.dumps(
-            {"text": "こあにでんわしました"}
+            {"text": "みらいにでんわしました"}
         )
         mock_recognizer_cls.return_value = mock_recognizer
 
@@ -417,8 +418,8 @@ class TestVoskSTTIntegration:
         audio = np.zeros(16000, dtype=np.int16)
         result = stt.recognize(audio)
 
-        assert "コア" in result
-        assert "こあ" not in result
+        assert "MIRAI" in result
+        assert "みらい" not in result
 
     @patch("src.stt.vosk_stt.SetLogLevel")
     @patch("src.stt.vosk_stt.KaldiRecognizer")
@@ -436,7 +437,7 @@ class TestVoskSTTIntegration:
         mock_recognizer = MagicMock()
         mock_recognizer.AcceptWaveform.return_value = True
         mock_recognizer.FinalResult.return_value = json.dumps(
-            {"text": "こあにでんわしました"}
+            {"text": "みらいにでんわしました"}
         )
         mock_recognizer_cls.return_value = mock_recognizer
 
@@ -446,7 +447,7 @@ class TestVoskSTTIntegration:
         result = stt.recognize(audio)
 
         # Without dictionary, text should be unchanged
-        assert result == "こあにでんわしました"
+        assert result == "みらいにでんわしました"
 
     @patch("src.stt.vosk_stt.SetLogLevel")
     @patch("src.stt.vosk_stt.KaldiRecognizer")

@@ -3,7 +3,7 @@ STT Dictionary Module.
 Provides post-processing correction for Vosk STT output.
 
 Loads a YAML-based correction dictionary and applies:
-- Exact string replacements (e.g., "こあ" -> "コア")
+- Exact string replacements (e.g., "うぇるあい" -> "WellAI")
 - Regex pattern-based replacements (e.g., "おでんわ" -> "お電話")
 """
 

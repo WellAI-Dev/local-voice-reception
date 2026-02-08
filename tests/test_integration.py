@@ -185,11 +185,11 @@ class TestPronunciationTTSIntegration:
         tts = QwenTTS(mode="custom_voice", pronunciation_dict_path=pronunciation_dict_path)
         tts.model = mock_tts_model
 
-        tts.synthesize("Cor.IncのAPIは500円です", language="Japanese")
+        tts.synthesize("WellAIのAPIは500円です", language="Japanese")
 
         call_args = mock_tts_model.generate_custom_voice.call_args
         text = call_args.kwargs["text"]
-        assert "コア インク" in text
+        assert "ウェルアイ" in text
         assert "エーピーアイ" in text
         assert "500えん" in text
 
@@ -204,8 +204,8 @@ class TestPronunciationTTSIntegration:
         tts._voice_clone_prompt = {"cached": True}
         tts._clone_language = "Japanese"
 
-        tts.synthesize_with_clone("Cor.Incへようこそ")
+        tts.synthesize_with_clone("WellAIへようこそ")
 
         call_args = mock_tts_model.generate_voice_clone.call_args
         text = call_args.kwargs["text"]
-        assert "コア インク" in text
+        assert "ウェルアイ" in text
