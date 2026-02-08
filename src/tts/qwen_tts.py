@@ -143,15 +143,23 @@ class QwenTTS:
             new_mode: Target mode ("custom_voice", "voice_clone", "voice_design")
         """
         with self._model_lock:
-            logger.info(f"Switching TTS mode: {self.mode} → {new_mode}")
-            self.model = None
-            self.mode = new_mode
-            self.model_name = MODEL_MAP.get(new_mode, MODEL_MAP["custom_voice"])
+            if self.mode == new_mode:
+                logger.info(
+                    f"TTS already in {new_mode} mode — skipping model reload, "
+                    "clearing prompt cache only"
+                )
+            else:
+                logger.info(f"Switching TTS mode: {self.mode} → {new_mode}")
+                self.model = None
+                self.mode = new_mode
+                self.model_name = MODEL_MAP.get(
+                    new_mode, MODEL_MAP["custom_voice"]
+                )
 
         with self._prompt_lock:
             self._voice_clone_prompt = None
 
-        logger.info(f"TTS mode switched to {new_mode} (model: {self.model_name})")
+        logger.info(f"TTS mode: {new_mode} (model: {self.model_name})")
 
     def prepare_clone(
         self,

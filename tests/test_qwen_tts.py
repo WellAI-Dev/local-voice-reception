@@ -495,6 +495,34 @@ class TestSwitchMode:
         # Final mode should be one of the valid modes
         assert tts.mode in ("custom_voice", "voice_clone")
 
+    @patch("src.utils.device.detect_device")
+    def test_switch_mode_same_mode_skips_model_unload(
+        self, mock_detect, mock_device_config, mock_tts_model
+    ):
+        """Switching to the same mode should NOT unload the model."""
+        mock_detect.return_value = mock_device_config
+        tts = QwenTTS(mode="voice_clone")
+        tts.model = mock_tts_model  # simulate loaded model
+
+        tts.switch_mode("voice_clone")
+
+        # Model should still be loaded (not unloaded)
+        assert tts.model is mock_tts_model
+        assert tts.mode == "voice_clone"
+
+    @patch("src.utils.device.detect_device")
+    def test_switch_mode_same_mode_clears_prompt(
+        self, mock_detect, mock_device_config
+    ):
+        """Even when staying in the same mode, prompt cache should be cleared."""
+        mock_detect.return_value = mock_device_config
+        tts = QwenTTS(mode="voice_clone")
+        tts._voice_clone_prompt = {"cached": True}
+
+        tts.switch_mode("voice_clone")
+
+        assert tts._voice_clone_prompt is None
+
 
 # ---------------------------------------------------------------------------
 # Speaker listing

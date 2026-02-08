@@ -825,7 +825,7 @@ def create_ui(app: VoiceReceptionApp) -> Tuple[gr.Blocks, dict]:
             dict_display = gr.Dataframe(
                 headers=["誤認識", "正しい表記", "メモ"],
                 datatype=["str", "str", "str"],
-                col_count=(3, "fixed"),
+                column_count=(3, "fixed"),
                 label="登録済み修正一覧",
                 interactive=True,
             )
@@ -846,7 +846,7 @@ def create_ui(app: VoiceReceptionApp) -> Tuple[gr.Blocks, dict]:
             pattern_display = gr.Dataframe(
                 headers=["パターン", "置換"],
                 datatype=["str", "str"],
-                col_count=(2, "fixed"),
+                column_count=(2, "fixed"),
                 label="登録済みパターン一覧",
                 interactive=True,
             )

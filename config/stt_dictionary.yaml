@@ -2,6 +2,9 @@
 # UI から追加・削除できます
 
 corrections:
+  - wrong: "興亜"
+    correct: "コア"
+    note: "会社名 - Voskが漢字で誤認識"
   - wrong: "こあ"
     correct: "コア"
     note: "会社名 (コア株式会社)"
