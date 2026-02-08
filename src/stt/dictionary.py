@@ -292,3 +292,19 @@ class STTDictionary:
         """
         with self._lock:
             return list(self._patterns)
+
+    def replace_all(
+        self, corrections: list[dict], patterns: list[dict]
+    ) -> None:
+        """
+        Replace all corrections and patterns at once.
+
+        Used by the UI to sync DataFrame edits back to the dictionary.
+
+        Args:
+            corrections: New corrections list (each dict has wrong, correct, note)
+            patterns: New patterns list (each dict has pattern, replacement)
+        """
+        with self._lock:
+            self._corrections = list(corrections)
+            self._patterns = list(patterns)

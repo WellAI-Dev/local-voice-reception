@@ -132,6 +132,27 @@ class QwenTTS:
         self._load_model()
         return self
 
+    def switch_mode(self, new_mode: str) -> None:
+        """
+        Switch TTS mode at runtime (e.g. custom_voice → voice_clone).
+
+        Unloads the current model so the next synthesis call lazy-loads the
+        correct one.  Also clears the cached voice clone prompt.
+
+        Args:
+            new_mode: Target mode ("custom_voice", "voice_clone", "voice_design")
+        """
+        with self._model_lock:
+            logger.info(f"Switching TTS mode: {self.mode} → {new_mode}")
+            self.model = None
+            self.mode = new_mode
+            self.model_name = MODEL_MAP.get(new_mode, MODEL_MAP["custom_voice"])
+
+        with self._prompt_lock:
+            self._voice_clone_prompt = None
+
+        logger.info(f"TTS mode switched to {new_mode} (model: {self.model_name})")
+
     def prepare_clone(
         self,
         ref_audio_path: str,
@@ -244,9 +265,15 @@ class QwenTTS:
         """
         self._load_model()
 
+        logger.info(
+            f"synthesize() params: text={text!r}, speaker={speaker!r}, "
+            f"language={language!r}, instruct={instruct!r}"
+        )
+
         # Preprocess with pronunciation dictionary
         processed_text = self._preprocess_text(text)
-        logger.debug(f"Preprocessed text: {processed_text}")
+        if processed_text != text:
+            logger.info(f"Text after preprocessing: {processed_text!r}")
 
         # Always explicitly pass language to prevent auto-detection issues
         wavs, sr = self.model.generate_custom_voice(
@@ -256,6 +283,7 @@ class QwenTTS:
             instruct=instruct or "",
         )
 
+        logger.info(f"synthesize() output: {len(wavs[0])} samples, sr={sr}")
         return wavs[0], sr
 
     def synthesize_with_clone(
@@ -280,9 +308,16 @@ class QwenTTS:
         """
         self._load_model()
 
+        logger.info(
+            f"synthesize_with_clone() params: text={text!r}, "
+            f"ref_audio_path={ref_audio_path!r}, ref_text={ref_text!r}, "
+            f"language={language!r}"
+        )
+
         # Preprocess text
         processed_text = self._preprocess_text(text)
-        logger.debug(f"Voice clone text: {processed_text}")
+        if processed_text != text:
+            logger.info(f"Text after preprocessing: {processed_text!r}")
 
         # Use cached prompt if available (consistent voice across calls)
         with self._prompt_lock:
@@ -292,12 +327,13 @@ class QwenTTS:
         if cached_prompt is not None:
             # Always use the language that was set when the prompt was created
             # to ensure consistent Japanese output across all calls
-            logger.debug(f"Using cached voice clone prompt (language={cached_language})")
+            logger.info(f"Using cached voice clone prompt (language={cached_language})")
             wavs, sr = self.model.generate_voice_clone(
                 text=processed_text,
                 language=cached_language,
                 voice_clone_prompt=cached_prompt,
             )
+            logger.info(f"synthesize_with_clone() output: {len(wavs[0])} samples, sr={sr}")
             return wavs[0], sr
 
         # Fallback: compute from reference audio on-the-fly
@@ -320,6 +356,7 @@ class QwenTTS:
             ref_text=ref_text or "",
         )
 
+        logger.info(f"synthesize_with_clone() output: {len(wavs[0])} samples, sr={sr}")
         return wavs[0], sr
 
     def update_reference_audio(

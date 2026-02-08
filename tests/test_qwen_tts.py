@@ -426,6 +426,77 @@ class TestThreadSafety:
 
 
 # ---------------------------------------------------------------------------
+# switch_mode tests
+# ---------------------------------------------------------------------------
+class TestSwitchMode:
+    """Test runtime mode switching via switch_mode()."""
+
+    @patch("src.utils.device.detect_device")
+    def test_switch_mode_changes_mode_and_model(self, mock_detect, mock_device_config):
+        mock_detect.return_value = mock_device_config
+        tts = QwenTTS(mode="custom_voice")
+
+        assert tts.mode == "custom_voice"
+        assert tts.model_name == MODEL_MAP["custom_voice"]
+
+        tts.switch_mode("voice_clone")
+
+        assert tts.mode == "voice_clone"
+        assert tts.model_name == MODEL_MAP["voice_clone"]
+
+    @patch("src.utils.device.detect_device")
+    def test_switch_mode_unloads_model(self, mock_detect, mock_device_config, mock_tts_model):
+        mock_detect.return_value = mock_device_config
+        tts = QwenTTS(mode="custom_voice")
+        tts.model = mock_tts_model  # simulate loaded model
+
+        assert tts.model is not None
+
+        tts.switch_mode("voice_clone")
+
+        assert tts.model is None
+
+    @patch("src.utils.device.detect_device")
+    def test_switch_mode_clears_clone_prompt(self, mock_detect, mock_device_config):
+        mock_detect.return_value = mock_device_config
+        tts = QwenTTS(mode="voice_clone")
+        tts._voice_clone_prompt = {"cached": True}
+
+        tts.switch_mode("custom_voice")
+
+        assert tts._voice_clone_prompt is None
+
+    @patch("src.utils.device.detect_device")
+    def test_switch_mode_thread_safe(self, mock_detect, mock_device_config, mock_tts_model):
+        mock_detect.return_value = mock_device_config
+        tts = QwenTTS(mode="custom_voice")
+        tts.model = mock_tts_model
+        tts._voice_clone_prompt = {"cached": True}
+
+        errors = []
+
+        def do_switch(target_mode):
+            try:
+                tts.switch_mode(target_mode)
+            except Exception as e:
+                errors.append(e)
+
+        threads = []
+        for i in range(10):
+            mode = "voice_clone" if i % 2 == 0 else "custom_voice"
+            threads.append(threading.Thread(target=do_switch, args=(mode,)))
+
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join(timeout=5)
+
+        assert len(errors) == 0, f"Errors in concurrent switch_mode: {errors}"
+        # Final mode should be one of the valid modes
+        assert tts.mode in ("custom_voice", "voice_clone")
+
+
+# ---------------------------------------------------------------------------
 # Speaker listing
 # ---------------------------------------------------------------------------
 class TestSpeakerListing:

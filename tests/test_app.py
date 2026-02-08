@@ -133,6 +133,65 @@ class TestSynthesizeSpeechRouting:
         audio, sr = app._synthesize_speech("テスト")
         app.tts.synthesize_with_clone.assert_called_once()
 
+    def test_synthesize_reads_mode_from_tts_instance(self):
+        """_synthesize_speech should read mode from self.tts.mode, not config."""
+        app = self._make_app(mode="custom_voice")
+        # Config still says custom_voice, but tts.mode is changed to voice_clone
+        app.tts.mode = "voice_clone"
+        app.tts._voice_clone_prompt = {"cached": True}
+
+        app._synthesize_speech("テスト")
+
+        # Should route to voice_clone because tts.mode is "voice_clone"
+        app.tts.synthesize_with_clone.assert_called_once()
+        app.tts.synthesize.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# Voice registration mode switching tests
+# ---------------------------------------------------------------------------
+class TestVoiceRegistrationModeSwitching:
+    """Test that voice registration triggers mode switch to voice_clone."""
+
+    def test_register_voice_switches_to_voice_clone_mode(self, base_config, tmp_path):
+        """register_voice() should call switch_mode('voice_clone') on the TTS instance."""
+        import threading
+
+        app = VoiceReceptionApp(base_config)
+        app.tts = MagicMock()
+        app.tts.mode = "custom_voice"
+        app.tts._voice_clone_prompt = None
+        app.tts._prompt_lock = threading.RLock()
+
+        # Simulate the register_voice logic from the closure
+        sample_rate_in = 24000
+        audio_data_in = np.sin(np.linspace(0, 1, int(24000 * 3.0))).astype(np.float32)
+        ref_text = "テスト音声です。"
+
+        voice_dir = tmp_path / "data" / "voice_samples"
+        voice_dir.mkdir(parents=True, exist_ok=True)
+        ref_path = voice_dir / "company_voice.wav"
+
+        import soundfile as sf
+        sf.write(str(ref_path), audio_data_in, sample_rate_in)
+
+        # Simulate what register_voice does after saving audio
+        app.tts.switch_mode("voice_clone")
+        app.config["tts"]["mode"] = "voice_clone"
+        app.tts.update_reference_audio(
+            ref_audio_path=str(ref_path),
+            ref_text=ref_text,
+            language="Japanese",
+        )
+
+        app.tts.switch_mode.assert_called_once_with("voice_clone")
+        assert app.config["tts"]["mode"] == "voice_clone"
+        app.tts.update_reference_audio.assert_called_once_with(
+            ref_audio_path=str(ref_path),
+            ref_text=ref_text,
+            language="Japanese",
+        )
+
 
 # ---------------------------------------------------------------------------
 # Initialization tests

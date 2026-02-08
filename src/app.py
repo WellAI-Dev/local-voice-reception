@@ -8,6 +8,7 @@ import base64
 import io
 import logging
 import os
+import re
 import sys
 from pathlib import Path
 from typing import Generator, Optional, Tuple
@@ -178,10 +179,11 @@ class VoiceReceptionApp:
     def _synthesize_speech(self, text: str) -> Tuple[np.ndarray, int]:
         """
         Synthesize speech using the configured TTS mode.
-        Routes to voice_clone or custom_voice based on config.
+        Routes to voice_clone or custom_voice based on the live tts.mode
+        (which may be changed at runtime by switch_mode()).
         """
         tts_config = self.config.get("tts", {})
-        tts_mode = tts_config.get("mode", "custom_voice")
+        tts_mode = self.tts.mode  # live mode (reflects switch_mode() changes)
         custom_config = tts_config.get("custom_voice", {})
         language = custom_config.get("language", "Japanese")
 
@@ -778,15 +780,20 @@ def create_ui(app: VoiceReceptionApp) -> Tuple[gr.Blocks, dict]:
                 sf.write(str(ref_path), audio_data_in, sample_rate_in)
                 logger.info(f"Reference audio saved: {ref_path} ({len(audio_data_in)} samples, {sample_rate_in}Hz)")
 
-                # Update voice clone prompt if TTS is initialized
+                # Switch to voice_clone mode and update prompt
                 if app.tts is not None:
                     try:
+                        # Switch model from CustomVoice → Base so that
+                        # create_voice_clone_prompt() is supported
+                        app.tts.switch_mode("voice_clone")
+                        app.config["tts"]["mode"] = "voice_clone"
+
                         app.tts.update_reference_audio(
                             ref_audio_path=str(ref_path),
                             ref_text=ref_text,
                             language="Japanese",
                         )
-                        return f"登録完了! 音声クローンプロンプトを更新しました。({len(audio_data_in) / sample_rate_in:.1f}秒)"
+                        return f"登録完了! voice_cloneモードに切り替え、プロンプトを更新しました。({len(audio_data_in) / sample_rate_in:.1f}秒)"
                     except Exception as e:
                         logger.error(f"Voice clone update error: {e}")
                         return (
@@ -809,16 +816,18 @@ def create_ui(app: VoiceReceptionApp) -> Tuple[gr.Blocks, dict]:
         # STT Dictionary management
         with gr.Accordion("📖 音声認識辞書", open=False):
             gr.Markdown(
-                "Voskの誤認識を修正する辞書を管理します。"
-                "追加した修正はすぐに反映されます。"
+                "Voskの誤認識を修正する辞書を管理します。\n\n"
+                "テーブルのセルを直接クリックして編集できます。"
+                "編集後は「変更を保存」ボタンを押してください。"
             )
 
-            # Current corrections display
+            # Editable corrections table
             dict_display = gr.Dataframe(
                 headers=["誤認識", "正しい表記", "メモ"],
                 datatype=["str", "str", "str"],
+                col_count=(3, "fixed"),
                 label="登録済み修正一覧",
-                interactive=False,
+                interactive=True,
             )
 
             # Add correction form
@@ -828,7 +837,7 @@ def create_ui(app: VoiceReceptionApp) -> Tuple[gr.Blocks, dict]:
                 dict_note = gr.Textbox(label="メモ（任意）", scale=2)
             with gr.Row():
                 dict_add_btn = gr.Button("➕ 修正を追加", size="sm", variant="primary")
-                dict_remove_btn = gr.Button("🗑️ 選択した誤認識を削除", size="sm", variant="secondary")
+                dict_remove_btn = gr.Button("🗑️ 誤認識を削除", size="sm", variant="secondary")
 
             dict_status = gr.Textbox(label="ステータス", interactive=False)
 
@@ -837,15 +846,21 @@ def create_ui(app: VoiceReceptionApp) -> Tuple[gr.Blocks, dict]:
             pattern_display = gr.Dataframe(
                 headers=["パターン", "置換"],
                 datatype=["str", "str"],
+                col_count=(2, "fixed"),
                 label="登録済みパターン一覧",
-                interactive=False,
+                interactive=True,
             )
             with gr.Row():
                 pattern_regex = gr.Textbox(label="正規表現パターン", scale=3)
                 pattern_replacement = gr.Textbox(label="置換テキスト", scale=3)
             with gr.Row():
                 pattern_add_btn = gr.Button("➕ パターンを追加", size="sm", variant="primary")
-                pattern_remove_btn = gr.Button("🗑️ 選択したパターンを削除", size="sm", variant="secondary")
+                pattern_remove_btn = gr.Button("🗑️ パターンを削除", size="sm", variant="secondary")
+
+            # Save button for direct table edits
+            dict_save_btn = gr.Button(
+                "💾 変更を保存", size="sm", variant="primary",
+            )
 
             def refresh_dict_display():
                 if app.stt_dictionary is None:
@@ -861,6 +876,66 @@ def create_ui(app: VoiceReceptionApp) -> Tuple[gr.Blocks, dict]:
                     for p in patterns
                 ]
                 return corr_rows, pat_rows
+
+            def save_dict_changes(corr_data, pat_data):
+                """Sync DataFrame edits back to the STT dictionary."""
+                if app.stt_dictionary is None:
+                    return *refresh_dict_display(), "辞書が初期化されていません。"
+
+                new_corrections = []
+                new_patterns = []
+
+                # Parse corrections from DataFrame
+                if corr_data is not None:
+                    rows = (
+                        corr_data.values.tolist()
+                        if hasattr(corr_data, "values")
+                        else list(corr_data)
+                    )
+                    for row in rows:
+                        if not isinstance(row, (list, tuple)) or len(row) < 2:
+                            continue
+                        wrong = str(row[0]).strip()
+                        correct = str(row[1]).strip()
+                        note = str(row[2]).strip() if len(row) > 2 and row[2] else ""
+                        if wrong and correct:
+                            new_corrections.append({
+                                "wrong": wrong,
+                                "correct": correct,
+                                "note": note,
+                            })
+
+                # Parse patterns from DataFrame
+                if pat_data is not None:
+                    rows = (
+                        pat_data.values.tolist()
+                        if hasattr(pat_data, "values")
+                        else list(pat_data)
+                    )
+                    for row in rows:
+                        if not isinstance(row, (list, tuple)) or len(row) < 1:
+                            continue
+                        pattern = str(row[0]).strip()
+                        replacement = str(row[1]).strip() if len(row) > 1 and row[1] else ""
+                        if pattern:
+                            try:
+                                re.compile(pattern)
+                            except re.error as e:
+                                return (
+                                    *refresh_dict_display(),
+                                    f"無効なパターン '{pattern}': {e}",
+                                )
+                            new_patterns.append({
+                                "pattern": pattern,
+                                "replacement": replacement,
+                            })
+
+                app.stt_dictionary.replace_all(new_corrections, new_patterns)
+                app.stt_dictionary.save()
+                return (
+                    *refresh_dict_display(),
+                    f"保存しました（修正: {len(new_corrections)}件、パターン: {len(new_patterns)}件）",
+                )
 
             def add_correction(wrong, correct, note):
                 if not wrong or not correct:
@@ -905,6 +980,11 @@ def create_ui(app: VoiceReceptionApp) -> Tuple[gr.Blocks, dict]:
                     return *refresh_dict_display(), f"パターンを削除しました: '{regex}'"
                 return *refresh_dict_display(), f"見つかりません: '{regex}'"
 
+            dict_save_btn.click(
+                fn=save_dict_changes,
+                inputs=[dict_display, pattern_display],
+                outputs=[dict_display, pattern_display, dict_status],
+            )
             dict_add_btn.click(
                 fn=add_correction,
                 inputs=[dict_wrong, dict_correct, dict_note],

@@ -502,6 +502,73 @@ class TestRegexDoSPrevention:
         assert len(dictionary.list_patterns()) == 1
 
 
+class TestReplaceAll:
+    """Tests for bulk replace_all method used by UI save."""
+
+    def test_replace_all_overwrites_corrections(self, tmp_path):
+        dictionary = STTDictionary(str(tmp_path / "test.yaml"))
+        dictionary.add_correction("old", "OLD")
+        dictionary.add_correction("other", "OTHER")
+
+        dictionary.replace_all(
+            corrections=[{"wrong": "new", "correct": "NEW", "note": "replaced"}],
+            patterns=[],
+        )
+
+        result = dictionary.list_corrections()
+        assert len(result) == 1
+        assert result[0]["wrong"] == "new"
+        assert result[0]["correct"] == "NEW"
+
+    def test_replace_all_overwrites_patterns(self, tmp_path):
+        dictionary = STTDictionary(str(tmp_path / "test.yaml"))
+        dictionary.add_pattern("old_pat", "OLD")
+
+        dictionary.replace_all(
+            corrections=[],
+            patterns=[{"pattern": "new_pat", "replacement": "NEW"}],
+        )
+
+        result = dictionary.list_patterns()
+        assert len(result) == 1
+        assert result[0]["pattern"] == "new_pat"
+
+    def test_replace_all_with_empty_clears(self, tmp_path):
+        dictionary = STTDictionary(str(tmp_path / "test.yaml"))
+        dictionary.add_correction("a", "A")
+        dictionary.add_pattern("b", "B")
+
+        dictionary.replace_all(corrections=[], patterns=[])
+
+        assert dictionary.list_corrections() == []
+        assert dictionary.list_patterns() == []
+
+    def test_replace_all_then_save_and_reload(self, tmp_path):
+        dict_path = tmp_path / "test.yaml"
+        dictionary = STTDictionary(str(dict_path))
+
+        dictionary.replace_all(
+            corrections=[{"wrong": "x", "correct": "X", "note": ""}],
+            patterns=[{"pattern": "y", "replacement": "Y"}],
+        )
+        dictionary.save()
+
+        reloaded = STTDictionary(str(dict_path))
+        assert len(reloaded.list_corrections()) == 1
+        assert reloaded.list_corrections()[0]["wrong"] == "x"
+        assert len(reloaded.list_patterns()) == 1
+        assert reloaded.list_patterns()[0]["pattern"] == "y"
+
+    def test_replace_all_applies_corrections(self, tmp_path):
+        dictionary = STTDictionary(str(tmp_path / "test.yaml"))
+        dictionary.replace_all(
+            corrections=[{"wrong": "abc", "correct": "ABC", "note": ""}],
+            patterns=[],
+        )
+
+        assert dictionary.correct("abc def") == "ABC def"
+
+
 class TestThreadSafeDictionary:
     """Tests for thread safety in STT dictionary."""
 
