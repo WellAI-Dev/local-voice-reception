@@ -25,28 +25,39 @@ stt:
 # 音声合成 (Text-to-Speech) 設定
 tts:
   # モデル設定
-  model_name: "Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice"
-  # 軽量版: "Qwen/Qwen3-TTS-12Hz-0.6B-Base"
+  # mode に応じて自動選択される（model_name を省略すると自動）
+  #   custom_voice → Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice
+  #   voice_clone  → Qwen/Qwen3-TTS-12Hz-1.7B-Base
+  #   voice_design → Qwen/Qwen3-TTS-12Hz-1.7B-VoiceDesign
+  # 明示的に指定する場合は model_name を設定:
+  # model_name: "Qwen/Qwen3-TTS-12Hz-1.7B-Base"
 
   # デバイス設定 (auto = 自動検出)
   # mps: Apple Silicon (float32, sdpa)
   # cuda: NVIDIA GPU (bfloat16, flash_attention_2)
   # cpu: CPU fallback (float32, sdpa)
   device: "auto"
-  
-  # 音声設定
-  mode: "voice_clone"  # voice_clone / custom_voice / voice_design
-  
+
+  # 音声モード
+  # voice_clone:  自分の声を録音してクローン（Base モデル使用）
+  # custom_voice: プリセット話者を使用（CustomVoice モデル使用）
+  # voice_design: テキスト記述で声を生成（VoiceDesign モデル使用）
+  mode: "custom_voice"
+
   # 音声クローン設定 (mode: voice_clone の場合)
+  # ref_audio に WAV ファイルを配置し、ref_text にその音声の書き起こしを記載
+  # 推奨: 3秒以上、摩擦音・長音・特殊音節を含む文を使用
+  # voice_clone_prompt は初回起動時にキャッシュされ、以降の呼び出しで再利用される
   voice_clone:
     ref_audio: "data/voice_samples/company_voice.wav"
-    ref_text: "お電話ありがとうございます。コア株式会社でございます。"
-  
+    ref_text: "今日はとても晴れた日で、風は少し冷たく感じます。朝はパンとコーヒーを用意して、ゆっくりニュースを読みました。"
+
   # プリセット音声設定 (mode: custom_voice の場合)
+  # 利用可能な話者: ono_anna, vivian, serena, ryan, aiden, dylan, eric, sohee, uncle_fu
   custom_voice:
-    speaker: "ono_anna"  # 日本語ネイティブ話者（小文字・アンダースコア）
+    speaker: "ono_anna"
     language: "Japanese"
-  
+
   # 発音辞書
   pronunciation_dict: "config/pronunciation_dict.yaml"
 

@@ -1,10 +1,15 @@
 """
 Qwen3-TTS Text-to-Speech Module.
 Provides high-quality Japanese speech synthesis with voice cloning support.
+
+Supports two modes:
+- custom_voice: Preset speakers (e.g., Ono_Anna) via CustomVoice model
+- voice_clone: Clone any voice from reference audio via Base model
 """
 
 import logging
 import re
+import threading
 from pathlib import Path
 from typing import Optional, Tuple
 
@@ -28,17 +33,25 @@ def _load_qwen_tts():
     return Qwen3TTSModel
 
 
+# Model name mapping per mode
+MODEL_MAP = {
+    "custom_voice": "Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice",
+    "voice_clone": "Qwen/Qwen3-TTS-12Hz-1.7B-Base",
+    "voice_design": "Qwen/Qwen3-TTS-12Hz-1.7B-VoiceDesign",
+}
+
+
 class QwenTTS:
     """
     Qwen3-TTS based Text-to-Speech engine.
 
     Supports:
     - Custom voice (preset speakers like Ono_Anna)
-    - Voice cloning (from reference audio)
+    - Voice cloning (from reference audio with prompt caching)
     - Voice design (natural language description)
     """
 
-    # Available preset speakers (lowercase with underscore)
+    # Available preset speakers for CustomVoice model
     SPEAKERS = {
         "ono_anna": "Playful Japanese female voice, light nimble timbre",
         "vivian": "Bright, slightly edgy young female voice (Chinese native)",
@@ -53,7 +66,8 @@ class QwenTTS:
 
     def __init__(
         self,
-        model_name: str = "Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice",
+        model_name: Optional[str] = None,
+        mode: str = "custom_voice",
         device: str = "auto",
         pronunciation_dict_path: Optional[str] = None,
     ):
@@ -61,18 +75,27 @@ class QwenTTS:
         Initialize Qwen TTS.
 
         Args:
-            model_name: HuggingFace model name or path
+            model_name: HuggingFace model name (auto-selected if None)
+            mode: Operation mode ("custom_voice", "voice_clone", "voice_design")
             device: Device to use ("auto", "mps", "cuda", "cpu")
             pronunciation_dict_path: Path to pronunciation dictionary YAML
         """
-        self.model_name = model_name
+        self.mode = mode
+        self.model_name = model_name or MODEL_MAP.get(mode, MODEL_MAP["custom_voice"])
         self.model = None
         self.sample_rate = 24000  # Qwen3-TTS outputs 24kHz audio
+
+        # Voice clone prompt cache (computed once, reused for every synthesis)
+        self._voice_clone_prompt = None
+        self._clone_language = "Japanese"
+        self._prompt_lock = threading.RLock()
+        self._model_lock = threading.Lock()
 
         # Device detection
         from src.utils.device import detect_device
 
         self.device_config = detect_device(device if device != "auto" else None)
+        logger.info(f"TTS mode: {self.mode}, model: {self.model_name}")
         logger.info(f"TTS using device: {self.device_config}")
 
         # Load pronunciation dictionary
@@ -81,27 +104,85 @@ class QwenTTS:
             self._load_pronunciation_dict(pronunciation_dict_path)
 
     def _load_model(self):
-        """Lazy load the TTS model."""
+        """Lazy load the TTS model (thread-safe against concurrent first-load)."""
         if self.model is not None:
             return
 
-        logger.info(f"Loading Qwen TTS model: {self.model_name}")
-        logger.info(f"Device config: {self.device_config}")
+        with self._model_lock:
+            # Double-check after acquiring lock
+            if self.model is not None:
+                return
 
-        _Qwen3TTSModel = _load_qwen_tts()
+            logger.info(f"Loading Qwen TTS model: {self.model_name}")
+            logger.info(f"Device config: {self.device_config}")
 
-        self.model = _Qwen3TTSModel.from_pretrained(
-            self.model_name,
-            device_map=self.device_config.device,
-            dtype=self.device_config.dtype,
-            attn_implementation=self.device_config.attn_implementation,
-        )
+            _Qwen3TTSModel = _load_qwen_tts()
 
-        logger.info("Qwen TTS model loaded successfully")
+            self.model = _Qwen3TTSModel.from_pretrained(
+                self.model_name,
+                device_map=self.device_config.device,
+                dtype=self.device_config.dtype,
+                attn_implementation=self.device_config.attn_implementation,
+            )
+
+            logger.info("Qwen TTS model loaded successfully")
 
     def preload(self):
         """Preload the TTS model (call at startup to avoid first-request delay)."""
         self._load_model()
+        return self
+
+    def prepare_clone(
+        self,
+        ref_audio_path: str,
+        ref_text: str,
+        language: str = "Japanese",
+    ):
+        """
+        Pre-compute voice clone prompt from reference audio.
+        This caches the prompt so subsequent synthesize calls are faster
+        and produce consistent voice output.
+
+        Args:
+            ref_audio_path: Path to reference audio file (3+ seconds recommended)
+            ref_text: Transcript of the reference audio
+            language: Language of the reference audio
+        """
+        self._load_model()
+
+        ref_path = Path(ref_audio_path)
+        if not ref_path.exists():
+            logger.warning(f"Reference audio not found: {ref_path}")
+            logger.warning("Voice cloning will fall back to custom_voice mode")
+            return self
+
+        # Validate reference audio duration
+        import soundfile as sf_check
+
+        data, sr_check = sf_check.read(str(ref_path))
+        duration = len(data) / sr_check
+        if duration < 1.0:
+            logger.warning(f"Reference audio is very short ({duration:.1f}s). Minimum 1s required.")
+            return self
+        if duration < 3.0:
+            logger.warning(
+                f"Reference audio is {duration:.1f}s. 3+ seconds recommended for better quality."
+            )
+
+        if len(ref_text.strip()) < 5:
+            logger.warning(f"Reference text is too short ({len(ref_text)} chars). 10+ recommended.")
+
+        logger.info(f"Pre-computing voice clone prompt from: {ref_audio_path} ({duration:.1f}s)")
+        logger.info(f"Reference text: {ref_text}")
+
+        with self._prompt_lock:
+            self._clone_language = language
+            self._voice_clone_prompt = self.model.create_voice_clone_prompt(
+                ref_audio=str(ref_path),
+                ref_text=ref_text,
+            )
+
+        logger.info("Voice clone prompt cached successfully")
         return self
 
     def _load_pronunciation_dict(self, path: str):
@@ -113,6 +194,10 @@ class QwenTTS:
 
         with open(path, "r", encoding="utf-8") as f:
             data = yaml.safe_load(f)
+
+        if not isinstance(data, dict):
+            logger.warning(f"Pronunciation dict is not a valid YAML mapping: {path}")
+            return
 
         self.pronunciation_dict = data
         logger.info(f"Loaded pronunciation dictionary: {len(data.get('terms', []))} terms")
@@ -146,13 +231,13 @@ class QwenTTS:
         instruct: Optional[str] = None,
     ) -> Tuple[np.ndarray, int]:
         """
-        Synthesize speech from text using preset speaker.
+        Synthesize speech from text using preset speaker (custom_voice mode).
 
         Args:
             text: Text to synthesize
             speaker: Preset speaker name (see SPEAKERS)
             language: Language ("Japanese", "Chinese", "English", etc.)
-            instruct: Optional style instruction (e.g., "優しく話して")
+            instruct: Optional style instruction
 
         Returns:
             Tuple of (audio_data as numpy array, sample_rate)
@@ -163,7 +248,7 @@ class QwenTTS:
         processed_text = self._preprocess_text(text)
         logger.debug(f"Preprocessed text: {processed_text}")
 
-        # Generate audio
+        # Always explicitly pass language to prevent auto-detection issues
         wavs, sr = self.model.generate_custom_voice(
             text=processed_text,
             language=language,
@@ -176,18 +261,19 @@ class QwenTTS:
     def synthesize_with_clone(
         self,
         text: str,
-        ref_audio_path: str,
-        ref_text: str,
+        ref_audio_path: Optional[str] = None,
+        ref_text: Optional[str] = None,
         language: str = "Japanese",
     ) -> Tuple[np.ndarray, int]:
         """
         Synthesize speech using voice cloning.
+        Uses cached voice_clone_prompt if available for consistent output.
 
         Args:
             text: Text to synthesize
-            ref_audio_path: Path to reference audio file (3+ seconds)
-            ref_text: Transcript of reference audio
-            language: Language
+            ref_audio_path: Path to reference audio (ignored if prompt is cached)
+            ref_text: Transcript of reference audio (ignored if prompt is cached)
+            language: Language for synthesis output
 
         Returns:
             Tuple of (audio_data as numpy array, sample_rate)
@@ -196,21 +282,64 @@ class QwenTTS:
 
         # Preprocess text
         processed_text = self._preprocess_text(text)
+        logger.debug(f"Voice clone text: {processed_text}")
 
-        # Load reference audio
-        import soundfile as sf
+        # Use cached prompt if available (consistent voice across calls)
+        with self._prompt_lock:
+            cached_prompt = self._voice_clone_prompt
+            cached_language = self._clone_language
 
-        ref_audio, ref_sr = sf.read(ref_audio_path)
+        if cached_prompt is not None:
+            # Always use the language that was set when the prompt was created
+            # to ensure consistent Japanese output across all calls
+            logger.debug(f"Using cached voice clone prompt (language={cached_language})")
+            wavs, sr = self.model.generate_voice_clone(
+                text=processed_text,
+                language=cached_language,
+                voice_clone_prompt=cached_prompt,
+            )
+            return wavs[0], sr
 
-        # Generate with voice cloning
+        # Fallback: compute from reference audio on-the-fly
+        if ref_audio_path is None:
+            raise ValueError(
+                "No cached voice clone prompt and no ref_audio_path provided. "
+                "Call prepare_clone() first or provide ref_audio_path."
+            )
+
+        ref_path = Path(ref_audio_path)
+        if not ref_path.exists():
+            raise FileNotFoundError(f"Reference audio not found: {ref_path}")
+
+        logger.info(f"Computing voice clone from: {ref_audio_path} (not cached)")
+
         wavs, sr = self.model.generate_voice_clone(
             text=processed_text,
-            ref_audio=ref_audio,
-            ref_text=ref_text,
             language=language,
+            ref_audio=str(ref_path),
+            ref_text=ref_text or "",
         )
 
         return wavs[0], sr
+
+    def update_reference_audio(
+        self,
+        ref_audio_path: str,
+        ref_text: str,
+        language: str = "Japanese",
+    ):
+        """
+        Update the cached voice clone prompt with new reference audio.
+        Use this when the user records a new voice sample.
+
+        Args:
+            ref_audio_path: Path to new reference audio file
+            ref_text: Transcript of the new reference audio
+            language: Language of the reference audio
+        """
+        with self._prompt_lock:
+            self._voice_clone_prompt = None
+        self.prepare_clone(ref_audio_path, ref_text, language)
 
     def save_audio(
         self,
@@ -235,18 +364,43 @@ if __name__ == "__main__":
     # Test TTS
     logging.basicConfig(level=logging.INFO)
 
-    tts = QwenTTS(
+    # Test custom_voice mode
+    print("=== Testing custom_voice mode ===")
+    tts_custom = QwenTTS(
+        mode="custom_voice",
         pronunciation_dict_path="config/pronunciation_dict.yaml",
     )
+    print("Available speakers:", tts_custom.list_speakers())
+    print("\nSynthesizing test audio (custom_voice)...")
 
-    print("Available speakers:", tts.list_speakers())
-    print("\nSynthesizing test audio...")
-
-    audio, sr = tts.synthesize(
-        text="お電話ありがとうございます。コア株式会社でございます。ご用件をお伺いいたします。",
+    audio, sr = tts_custom.synthesize(
+        text="お電話ありがとうございます。コア株式会社でございます。",
         speaker="Ono_Anna",
         language="Japanese",
     )
+    tts_custom.save_audio(audio, "test_custom_voice.wav", sr)
+    print(f"Audio saved: test_custom_voice.wav (sample rate: {sr})")
 
-    tts.save_audio(audio, "test_output.wav", sr)
-    print(f"Audio saved: test_output.wav (sample rate: {sr})")
+    # Test voice_clone mode (requires reference audio)
+    print("\n=== Testing voice_clone mode ===")
+    ref_audio = "data/voice_samples/company_voice.wav"
+    if Path(ref_audio).exists():
+        tts_clone = QwenTTS(
+            mode="voice_clone",
+            pronunciation_dict_path="config/pronunciation_dict.yaml",
+        )
+        tts_clone.prepare_clone(
+            ref_audio_path=ref_audio,
+            ref_text="お電話ありがとうございます。コア株式会社でございます。",
+            language="Japanese",
+        )
+
+        audio, sr = tts_clone.synthesize_with_clone(
+            text="ご用件をお伺いいたします。",
+            language="Japanese",
+        )
+        tts_clone.save_audio(audio, "test_voice_clone.wav", sr)
+        print(f"Audio saved: test_voice_clone.wav (sample rate: {sr})")
+    else:
+        print(f"Reference audio not found: {ref_audio}")
+        print("Record your voice and save it there to test voice cloning.")

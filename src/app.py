@@ -102,10 +102,11 @@ class VoiceReceptionApp:
         # Initialize TTS
         try:
             tts_config = self.config.get("tts", {})
+            tts_mode = tts_config.get("mode", "custom_voice")
+
             self.tts = QwenTTS(
-                model_name=tts_config.get(
-                    "model_name", "Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice"
-                ),
+                model_name=tts_config.get("model_name"),
+                mode=tts_mode,
                 device=tts_config.get("device", "auto"),
                 pronunciation_dict_path=str(
                     PROJECT_ROOT / tts_config.get(
@@ -113,18 +114,81 @@ class VoiceReceptionApp:
                     )
                 ),
             )
+
             if tts_config.get("preload", False):
                 logger.info("Preloading TTS model...")
                 self.tts.preload()
                 logger.info("TTS model preloaded")
             else:
                 logger.info("TTS initialized (model will load on first use)")
+
+            # Pre-compute voice clone prompt if mode is voice_clone
+            if tts_mode == "voice_clone":
+                clone_config = tts_config.get("voice_clone", {})
+                ref_audio = clone_config.get("ref_audio", "")
+                ref_text = clone_config.get("ref_text", "")
+                ref_audio_path = str(PROJECT_ROOT / ref_audio) if ref_audio else ""
+
+                if ref_audio_path and Path(ref_audio_path).exists():
+                    logger.info("Pre-computing voice clone prompt...")
+                    self.tts.prepare_clone(
+                        ref_audio_path=ref_audio_path,
+                        ref_text=ref_text,
+                        language="Japanese",
+                    )
+                    logger.info("Voice clone prompt ready")
+                else:
+                    logger.warning(
+                        f"Voice clone ref audio not found: {ref_audio_path}. "
+                        "Record your voice via the UI or place a WAV file there."
+                    )
+
         except Exception as e:
             errors.append(f"TTS init error: {e}")
 
         if errors:
             return False, "\n".join(errors)
         return True, "All components initialized successfully"
+
+    def _synthesize_speech(self, text: str) -> Tuple[np.ndarray, int]:
+        """
+        Synthesize speech using the configured TTS mode.
+        Routes to voice_clone or custom_voice based on config.
+        """
+        tts_config = self.config.get("tts", {})
+        tts_mode = tts_config.get("mode", "custom_voice")
+        custom_config = tts_config.get("custom_voice", {})
+        language = custom_config.get("language", "Japanese")
+
+        # Thread-safe check of voice clone prompt cache
+        if tts_mode == "voice_clone":
+            with self.tts._prompt_lock:
+                has_prompt = self.tts._voice_clone_prompt is not None
+
+            if has_prompt:
+                return self.tts.synthesize_with_clone(
+                    text=text,
+                    language=language,
+                )
+
+            # Voice clone requested but no prompt cached - fallback with warning
+            logger.warning("Voice clone prompt not cached, falling back to custom_voice")
+
+            # Base model may not support generate_custom_voice,
+            # so only fallback if the TTS mode allows it
+            if self.tts.mode == "voice_clone":
+                logger.warning(
+                    "Base model may not support custom_voice synthesis. "
+                    "Record your voice via the UI or provide ref_audio in config."
+                )
+
+        # custom_voice mode (or fallback)
+        speaker = custom_config.get("speaker", "ono_anna")
+        return self.tts.synthesize(
+            text=text,
+            speaker=speaker,
+            language=language,
+        )
 
     def process_audio_streaming(
         self,
@@ -193,18 +257,10 @@ class VoiceReceptionApp:
         # Step 3: Generate TTS for complete response
         yield None, recognized_text, full_response + "\n\n🔊 音声を生成中...", self.get_conversation_display()
 
-        tts_config = self.config.get("tts", {}).get("custom_voice", {})
-        speaker = tts_config.get("speaker", "ono_anna")
-        language = tts_config.get("language", "Japanese")
-
         audio_output = None
         if self.tts and full_response.strip():
             try:
-                audio_data_out, sr = self.tts.synthesize(
-                    text=full_response,
-                    speaker=speaker,
-                    language=language,
-                )
+                audio_data_out, sr = self._synthesize_speech(full_response)
                 audio_output = (sr, audio_data_out)
                 logger.info(f"TTS generated: {len(audio_data_out)} samples at {sr}Hz")
             except Exception as e:
@@ -629,6 +685,92 @@ def create_ui(app: VoiceReceptionApp) -> Tuple[gr.Blocks, dict]:
         # Action buttons
         with gr.Row():
             clear_btn = gr.Button("🗑️ 会話をクリア", size="sm", variant="secondary")
+
+        # Voice clone recording section
+        with gr.Accordion("🎙️ 音声クローン設定", open=False):
+            gr.Markdown(
+                "**自分の声で応答させたい場合**\n\n"
+                "下記のテキストを読み上げて録音してください。"
+                "摩擦音・長音・特殊音節を含む文で音質が向上します。"
+            )
+            ref_text_input = gr.Textbox(
+                label="読み上げテキスト",
+                value="今日はとても晴れた日で、風は少し冷たく感じます。朝はパンとコーヒーを用意して、ゆっくりニュースを読みました。",
+                lines=2,
+            )
+            ref_audio_input = gr.Audio(
+                sources=["microphone", "upload"],
+                type="numpy",
+                label="リファレンス音声 (3秒以上推奨)",
+            )
+            register_voice_btn = gr.Button(
+                "🔊 この声で登録",
+                variant="primary",
+                size="sm",
+            )
+            clone_status = gr.Textbox(
+                label="登録ステータス",
+                interactive=False,
+                value="未登録",
+            )
+
+            def register_voice(audio_tuple, ref_text):
+                if audio_tuple is None:
+                    return "音声が入力されていません。マイクで録音するかファイルをアップロードしてください。"
+
+                if not ref_text.strip():
+                    return "読み上げテキストを入力してください。"
+
+                sample_rate_in, audio_data_in = audio_tuple
+
+                # Convert to mono if stereo
+                if len(audio_data_in.shape) > 1:
+                    audio_data_in = audio_data_in.mean(axis=1)
+
+                # Convert to float32 for saving
+                if audio_data_in.dtype == np.int16:
+                    audio_data_in = audio_data_in.astype(np.float32) / 32767.0
+
+                # Validate audio duration
+                duration = len(audio_data_in) / sample_rate_in
+                if duration < 1.0:
+                    return f"音声が短すぎます（{duration:.1f}秒）。最低1秒以上、推奨3秒以上で録音してください。"
+
+                # Save reference audio
+                voice_dir = PROJECT_ROOT / "data" / "voice_samples"
+                voice_dir.mkdir(parents=True, exist_ok=True)
+                ref_path = voice_dir / "company_voice.wav"
+
+                sf.write(str(ref_path), audio_data_in, sample_rate_in)
+                logger.info(f"Reference audio saved: {ref_path} ({len(audio_data_in)} samples, {sample_rate_in}Hz)")
+
+                # Update voice clone prompt if TTS is initialized
+                if app.tts is not None:
+                    try:
+                        app.tts.update_reference_audio(
+                            ref_audio_path=str(ref_path),
+                            ref_text=ref_text,
+                            language="Japanese",
+                        )
+                        return f"登録完了! 音声クローンプロンプトを更新しました。({len(audio_data_in) / sample_rate_in:.1f}秒)"
+                    except Exception as e:
+                        logger.error(f"Voice clone update error: {e}")
+                        return (
+                            f"音声は保存しましたが、プロンプト更新に失敗しました。\n"
+                            f"エラー: {e}\n\n"
+                            f"対処法: アプリを再起動するか、音声を再録音してください。"
+                        )
+
+                return (
+                    f"音声を保存しました: {ref_path}\n"
+                    f"TTSが初期化されていないため、アプリを再起動してください。"
+                )
+
+            register_voice_btn.click(
+                fn=register_voice,
+                inputs=[ref_audio_input, ref_text_input],
+                outputs=[clone_status],
+            )
 
         # System info accordion
         with gr.Accordion("🔧 システム情報", open=False):
