@@ -6,11 +6,19 @@ PYTHONPATH = "{{config_root}}"
 
 [tasks.install]
 description = "Install dependencies with uv"
-run = "uv sync"
+run = """
+uv sync
+echo '--- vosk (optional: no macOS ARM64 wheel) ---'
+uv pip install 'vosk>=0.3.42,<0.4.0' 2>/dev/null || echo 'SKIP: vosk not available on this platform'
+"""
 
 [tasks.install-dev]
 description = "Install with dev dependencies"
-run = "uv sync --extra dev"
+run = """
+uv sync --extra dev
+echo '--- vosk (optional: no macOS ARM64 wheel) ---'
+uv pip install 'vosk>=0.3.42,<0.4.0' 2>/dev/null || echo 'SKIP: vosk not available on this platform'
+"""
 
 [tasks.test]
 description = "Run all tests"

@@ -12,8 +12,6 @@ dependencies = [
     "soundfile>=0.12.1",
     "pyaudio>=0.2.14",
     "pydub>=0.25.1",
-    # Speech Recognition (STT)
-    "vosk>=0.3.42,<0.4.0",
     # Text-to-Speech (TTS)
     "qwen-tts>=0.0.5",
     "torch>=2.1.0",
@@ -36,6 +34,10 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+# vosk has no macOS ARM64 wheels - install separately on supported platforms
+stt = [
+    "vosk>=0.3.42,<0.4.0",
+]
 dev = [
     "pytest>=8.0",
     "pytest-cov>=4.0",
