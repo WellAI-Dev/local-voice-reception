@@ -1,0 +1,54 @@
+[project]
+name = "local-voice-reception"
+version = "0.1.0"
+description = "Local Voice Reception AI - Voice-to-voice conversation with streaming support"
+requires-python = ">=3.11"
+dependencies = [
+    # Core
+    "numpy>=1.24.0,<2.0.0",
+    "scipy>=1.11.0",
+    # Audio Processing
+    "sounddevice>=0.4.6",
+    "soundfile>=0.12.1",
+    "pyaudio>=0.2.14",
+    "pydub>=0.25.1",
+    # Speech Recognition (STT)
+    "vosk>=0.3.42,<0.4.0",
+    # Text-to-Speech (TTS)
+    "qwen-tts>=0.0.5",
+    "torch>=2.1.0",
+    "torchaudio>=2.1.0",
+    "transformers>=4.36.0",
+    "accelerate>=0.25.0",
+    # LLM & RAG
+    "langchain>=0.1.0",
+    "langchain-community>=0.0.20",
+    "chromadb>=0.4.22",
+    "sentence-transformers>=2.2.2",
+    "ollama>=0.1.6",
+    # Web UI
+    "gradio>=4.19.0",
+    # Utilities
+    "pyyaml>=6.0.1",
+    "python-dotenv>=1.0.0",
+    "tqdm>=4.66.0",
+    "rich>=13.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-cov>=4.0",
+    "pytest-asyncio>=0.23",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = "-v --tb=short"
+markers = [
+    "unit: Unit tests (no external dependencies)",
+    "integration: Integration tests (may require models)",
+]

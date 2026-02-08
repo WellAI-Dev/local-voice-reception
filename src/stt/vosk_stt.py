@@ -19,6 +19,8 @@ except OSError:
 
 from vosk import KaldiRecognizer, Model, SetLogLevel
 
+from .dictionary import STTDictionary
+
 logger = logging.getLogger(__name__)
 
 
@@ -34,6 +36,7 @@ class VoskSTT:
         model_path: str,
         sample_rate: int = 16000,
         chunk_size: int = 8000,
+        dictionary: Optional[STTDictionary] = None,
     ):
         """
         Initialize Vosk STT.
@@ -42,9 +45,11 @@ class VoskSTT:
             model_path: Path to Vosk model directory
             sample_rate: Audio sample rate (default: 16000)
             chunk_size: Audio chunk size for processing
+            dictionary: Optional STT correction dictionary
         """
         self.sample_rate = sample_rate
         self.chunk_size = chunk_size
+        self.dictionary = dictionary
         self._audio_queue: queue.Queue = queue.Queue()
         self._is_recording = False
 
@@ -94,6 +99,13 @@ class VoskSTT:
 
         result = json.loads(recognizer.FinalResult())
         text = result.get("text", "")
+
+        # Apply dictionary corrections if available
+        if self.dictionary and text:
+            corrected = self.dictionary.correct(text)
+            if corrected != text:
+                logger.debug(f"STT corrected: '{text}' -> '{corrected}'")
+                text = corrected
 
         logger.debug(f"STT result: '{text}'")
 
@@ -176,6 +188,8 @@ class VoskSTT:
                         if self.recognizer.AcceptWaveform(data.tobytes()):
                             result = json.loads(self.recognizer.Result())
                             text = result.get("text", "")
+                            if text and self.dictionary:
+                                text = self.dictionary.correct(text)
                             if text and on_final:
                                 on_final(text)
                             final_text = text
@@ -191,6 +205,8 @@ class VoskSTT:
                 # Get final result
                 result = json.loads(self.recognizer.FinalResult())
                 final_text = result.get("text", final_text)
+                if final_text and self.dictionary:
+                    final_text = self.dictionary.correct(final_text)
 
         except Exception as e:
             logger.error(f"Recording error: {e}")
@@ -243,6 +259,8 @@ class VoskSTT:
                         if self.recognizer.AcceptWaveform(data.tobytes()):
                             result = json.loads(self.recognizer.Result())
                             text = result.get("text", "")
+                            if text and self.dictionary:
+                                text = self.dictionary.correct(text)
                             if text:
                                 yield {"type": "final", "text": text}
                         else:
@@ -257,6 +275,8 @@ class VoskSTT:
                 # Final result
                 result = json.loads(self.recognizer.FinalResult())
                 text = result.get("text", "")
+                if text and self.dictionary:
+                    text = self.dictionary.correct(text)
                 if text:
                     yield {"type": "final", "text": text}
 

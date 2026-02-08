@@ -1,0 +1,41 @@
+[tools]
+python = "3.12"
+
+[env]
+PYTHONPATH = "{{config_root}}"
+
+[tasks.install]
+description = "Install dependencies with uv"
+run = "uv sync"
+
+[tasks.install-dev]
+description = "Install with dev dependencies"
+run = "uv sync --extra dev"
+
+[tasks.test]
+description = "Run all tests"
+run = "uv run pytest tests/ -v"
+
+[tasks.test-unit]
+description = "Run unit tests only"
+run = "uv run pytest tests/ -v -m unit"
+
+[tasks.test-cov]
+description = "Run tests with coverage"
+run = "uv run pytest tests/ --cov=src --cov-report=term-missing"
+
+[tasks.run]
+description = "Run the application"
+run = "uv run python -m src.app"
+
+[tasks.lint]
+description = "Run linter (ruff)"
+run = "uv run ruff check src/ tests/"
+
+[tasks.format]
+description = "Format code (ruff)"
+run = "uv run ruff format src/ tests/"
+
+[tasks.clean]
+description = "Clean build artifacts"
+run = "rm -rf __pycache__ .pytest_cache .ruff_cache dist build *.egg-info"

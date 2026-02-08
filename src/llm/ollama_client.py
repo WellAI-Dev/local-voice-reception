@@ -4,10 +4,13 @@ Provides interface to local Ollama LLM for response generation.
 """
 
 import logging
-from typing import Generator, List, Optional
+from typing import TYPE_CHECKING, Generator, List, Optional
 
 import ollama
 from ollama import Client
+
+if TYPE_CHECKING:
+    from src.llm.knowledge import KnowledgeManager
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +37,7 @@ class OllamaClient:
         system_prompt: Optional[str] = None,
         temperature: float = 0.7,
         max_tokens: int = 512,
+        knowledge_manager: Optional["KnowledgeManager"] = None,
     ):
         """
         Initialize Ollama client.
@@ -44,12 +48,15 @@ class OllamaClient:
             system_prompt: System prompt for the AI
             temperature: Generation temperature (0.0-1.0)
             max_tokens: Maximum tokens to generate
+            knowledge_manager: Optional KnowledgeManager for auto-injecting
+                knowledge context into prompts
         """
         self.model = model
         self.base_url = base_url
         self.system_prompt = system_prompt or DEFAULT_SYSTEM_PROMPT
         self.temperature = temperature
         self.max_tokens = max_tokens
+        self.knowledge_manager = knowledge_manager
 
         self.client = Client(host=base_url)
         self._conversation_history: List[dict] = []
@@ -160,12 +167,17 @@ class OllamaClient:
         if use_history:
             messages.extend(self._conversation_history)
 
+        # Auto-inject knowledge context if no explicit context provided
+        effective_context = context
+        if effective_context is None and self.knowledge_manager is not None:
+            effective_context = self.knowledge_manager.get_context()
+
         # Build user message with optional context
-        if context:
+        if effective_context:
             user_content = f"""以下の情報を参考にして回答してください。
 
 【参考情報】
-{context}
+{effective_context}
 
 【質問】
 {prompt}"""
