@@ -545,8 +545,19 @@ function initPTT() {
     status.textContent = 'ボタンを押している間、録音されます ✓';
 }
 
+// Fix Gradio 6 broken <label for=""> elements (empty for attribute)
+function fixBrokenLabels() {
+    document.querySelectorAll('label[for=""]').forEach(function(label) {
+        label.removeAttribute('for');
+    });
+}
+
 // Start initialization
 setTimeout(initPTT, 1000);
+setTimeout(fixBrokenLabels, 2000);
+// Re-run after Gradio dynamic updates
+new MutationObserver(function() { fixBrokenLabels(); })
+    .observe(document.body, { childList: true, subtree: true });
 """
 
 
@@ -690,9 +701,11 @@ def create_ui(app: VoiceReceptionApp) -> Tuple[gr.Blocks, dict]:
                     manual_submit_btn = gr.Button("🚀 送信", variant="secondary", size="sm")
 
             with gr.Column(scale=1):
-                # Output audio
+                # Output audio (label=None to avoid broken <label for=""> in Gradio 6)
+                gr.Markdown("**🔊 AI応答**")
                 audio_output = gr.Audio(
-                    label="🔊 AI応答",
+                    label=None,
+                    show_label=False,
                     type="numpy",
                     autoplay=True,
                 )
@@ -703,18 +716,17 @@ def create_ui(app: VoiceReceptionApp) -> Tuple[gr.Blocks, dict]:
                         label="📝 あなたの発言",
                         lines=2,
                         interactive=False,
-                        
                     )
                     response_text = gr.Textbox(
                         label="💬 AIの回答",
                         lines=3,
                         interactive=False,
-                        
                     )
 
-        # Conversation history using Chatbot component
+        # Conversation history (show_label=False to avoid broken <label for=""> in Gradio 6)
+        gr.Markdown("**📋 会話履歴**")
         chatbot = gr.Chatbot(
-            label="📋 会話履歴",
+            show_label=False,
             height=280,
             elem_classes=["chatbot-container"],
         )
