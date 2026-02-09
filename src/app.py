@@ -666,7 +666,8 @@ def create_ui(app: VoiceReceptionApp) -> Tuple[gr.Blocks, dict]:
 
                 # Hidden textbox for base64 audio
                 audio_base64_input = gr.Textbox(
-                    label="",
+                    label=None,
+                    show_label=False,
                     elem_id="ptt-audio-data",
                     elem_classes=["hidden-input"],
                     container=False,
